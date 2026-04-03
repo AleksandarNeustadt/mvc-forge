@@ -1,0 +1,18 @@
+parameters:
+    level: 0
+    bootstrapFiles:
+        - tests/bootstrap.php
+    paths:
+        - bootstrap/app.php
+        - core/container
+        - core/helpers.php
+        - core/http
+        - core/security
+        - core/services/ApiResponseFormatterService.php
+        - core/services/DashboardPageService.php
+        - core/services/DashboardLanguageService.php
+        - core/services/DashboardNavigationService.php
+        - core/routing/Route.php
+        - core/routing/RouteCollection.php
+        - tests/Support
+        - tests/phpunit

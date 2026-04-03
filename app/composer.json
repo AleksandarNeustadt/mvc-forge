@@ -1,0 +1,77 @@
+{
+    "name": "mvc-forge/framework",
+    "description": "MVC Forge - a custom PHP MVC/CMS framework for SEO-friendly publishing websites.",
+    "license": "proprietary",
+    "type": "project",
+    "require": {
+        "php": "^8.1",
+        "phpmailer/phpmailer": "^6.9"
+    },
+    "require-dev": {
+        "phpstan/phpstan": "^1.12",
+        "phpunit/phpunit": "^10.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "core/",
+            "App\\Core\\": "core/",
+            "App\\Models\\": "mvc/models/",
+            "App\\Controllers\\": "mvc/controllers/"
+        },
+        "classmap": [
+            "core/",
+            "mvc/controllers/",
+            "mvc/models/ApiToken.php",
+            "mvc/models/AuditLog.php",
+            "mvc/models/BlogCategory.php",
+            "mvc/models/BlogPost.php",
+            "mvc/models/BlogTag.php",
+            "mvc/models/ContactMessage.php",
+            "mvc/models/Continent.php",
+            "mvc/models/IpTracking.php",
+            "mvc/models/Language.php",
+            "mvc/models/NavigationMenu.php",
+            "mvc/models/Page.php",
+            "mvc/models/Permission.php",
+            "mvc/models/Region.php",
+            "mvc/models/Role.php",
+            "mvc/models/User.php"
+        ],
+        "files": [
+            "core/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\PhpUnit\\": "tests/phpunit/",
+            "Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "legacy-test": [
+            "@php tests/UserTest.php",
+            "@php tests/DashboardControllerTest.php"
+        ],
+        "lint": "@php scripts/lint-php.php",
+        "phpunit": "phpunit --configuration phpunit.xml",
+        "test-db:schema": "@php scripts/sync-test-database-schema.php",
+        "static": "phpstan analyse --configuration phpstan.neon --memory-limit=512M",
+        "test-db:seed": "@php scripts/seed-test-database.php",
+        "test": [
+            "@phpunit",
+            "@legacy-test"
+        ],
+        "check": [
+            "@lint",
+            "@static",
+            "@test"
+        ]
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

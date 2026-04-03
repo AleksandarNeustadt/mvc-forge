@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vite (assets) — aleksandar.pro</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; color: #e2e8f0; background: #0f172a; }
+    code { background: #1e293b; padding: 0.15rem 0.4rem; border-radius: 4px; }
+    a { color: #818cf8; }
+  </style>
+</head>
+<body>
+  <h1>Asset dev server</h1>
+  <p>
+    This URL is only for <strong>Vite</strong> while <code>npm run dev</code> runs.
+    Open the real site via your <strong>PHP</strong> URL. For HMR with <code>APP_DEBUG=true</code>, set
+    <code>VITE_DEV_SERVER_ORIGIN</code> in <code>app/.env</code> to the exact origin Vite prints (include port), e.g.
+    <code>http://localhost:5137</code> or, if the PHP site is HTTPS and the browser blocks mixed content,
+    run <code>VITE_DEV_HTTPS=1 npm run dev</code> and use <code>https://localhost:…</code> in
+    <code>VITE_DEV_SERVER_ORIGIN</code> (accept the self-signed cert once).
+  </p>
+  <p>The entry script below loads Tailwind/CSS via <code>app.js</code> (for quick checks).</p>
+  <script type="module" src="/app/resources/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+name: app-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend-and-frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo, pdo_mysql
+          coverage: none
+
+      - name: Install backend dependencies
+        working-directory: app
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run backend checks
+        working-directory: app
+        run: composer check
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+    bootstrap="tests/bootstrap.php"
+    colors="true"
+    cacheDirectory=".phpunit.cache"
+>
+    <testsuites>
+        <testsuite name="Application">
+            <directory>tests/phpunit</directory>
+        </testsuite>
+    </testsuites>
+    <php>
+        <env name="APP_ENV" value="testing" force="true"/>
+        <env name="APP_ENV_FILE" value=".env.testing" force="true"/>
+        <env name="APP_DEBUG" value="false" force="true"/>
+        <env name="DB_CONNECTION" value="mysql" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_PORT" value="3306" force="true"/>
+        <env name="DB_DATABASE" value="aleksandar_pro_test" force="true"/>
+        <env name="DB_USERNAME" value="aleksandar_pro_test" force="true"/>
+        <env name="DB_PASSWORD" value="aleksandar_pro_test" force="true"/>
+        <env name="DB_CHARSET" value="utf8mb4" force="true"/>
+        <server name="REQUEST_METHOD" value="GET"/>
+        <server name="REQUEST_URI" value="/sr"/>
+        <server name="HTTP_HOST" value="localhost"/>
+        <ini name="display_errors" value="1"/>
+        <ini name="error_reporting" value="-1"/>
+    </php>
+</phpunit>

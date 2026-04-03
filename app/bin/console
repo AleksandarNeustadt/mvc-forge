@@ -1,0 +1,496 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+use App\Core\cache\Cache;
+use App\Core\database\Database;
+use App\Core\database\DatabaseBuilder;
+use App\Core\permissions\PermissionRegistry;
+use App\Core\routing\DynamicRouteRegistry;
+use App\Models\Language;
+use App\Models\Page;
+use App\Models\Role;
+use App\Models\User;
+
+$appPath = dirname(__DIR__);
+
+require_once $appPath . '/bootstrap/app.php';
+ap_bootstrap_cli_application($appPath);
+
+$argv = $_SERVER['argv'] ?? [];
+$command = $argv[1] ?? 'help';
+$options = ap_console_parse_options(array_slice($argv, 2));
+
+try {
+    $exitCode = match ($command) {
+        'help', '--help', '-h' => ap_console_show_help(),
+        'install:check' => ap_console_install_check($appPath),
+        'storage:prepare' => ap_console_storage_prepare($appPath),
+        'cache:clear' => ap_console_cache_clear($appPath),
+        'app:key' => ap_console_app_key($appPath, $options),
+        'db:migrate' => ap_console_db_migrate($appPath, $options),
+        'db:seed' => ap_console_db_seed($options),
+        default => ap_console_unknown_command($command),
+    };
+} catch (Throwable $e) {
+    fwrite(STDERR, "[ERROR] {$e->getMessage()}\n");
+    exit(1);
+}
+
+exit($exitCode);
+
+function ap_console_show_help(): int
+{
+    echo "Aleksandar.pro console\n\n";
+    echo "Usage:\n";
+    echo "  php app/bin/console <command> [options]\n\n";
+    echo "Commands:\n";
+    echo "  install:check                 Check PHP, extensions, .env, storage and DB connectivity\n";
+    echo "  storage:prepare               Create storage/cache/log/upload directories\n";
+    echo "  cache:clear                   Clear file cache, compiled views and dynamic route cache\n";
+    echo "  app:key [--force]             Generate or rotate APP_KEY in app/.env\n";
+    echo "  db:migrate [--baseline]       Run pending migrations and store them in schema_migrations\n";
+    echo "  db:migrate --baseline         Mark all current migration files as already applied\n";
+    echo "  db:seed [--demo]              Seed system data and optionally demo content\n\n";
+    echo "db:seed options:\n";
+    echo "  --admin-email=<email>\n";
+    echo "  --admin-password=<password>\n";
+    echo "  --admin-username=<username>\n";
+    echo "  --demo                        Also seed demo content\n";
+
+    return 0;
+}
+
+function ap_console_unknown_command(string $command): int
+{
+    fwrite(STDERR, "Unknown command: {$command}\n\n");
+    ap_console_show_help();
+
+    return 1;
+}
+
+function ap_console_install_check(string $appPath): int
+{
+    $failed = 0;
+
+    $failed += ap_console_check('PHP version >= 8.2', version_compare(PHP_VERSION, '8.2.0', '>='));
+
+    foreach (['pdo', 'pdo_mysql', 'json', 'mbstring', 'openssl', 'fileinfo'] as $extension) {
+        $failed += ap_console_check("PHP extension {$extension}", extension_loaded($extension));
+    }
+
+    $failed += ap_console_check('.env exists', is_file($appPath . '/.env'));
+    $failed += ap_console_check('public_html/index.php exists', is_file(dirname($appPath) . '/public_html/index.php'));
+
+    foreach (ap_console_storage_directories($appPath) as $dir) {
+        $failed += ap_console_check("Writable directory {$dir}", is_dir($dir) && is_writable($dir));
+    }
+
+    try {
+        $row = Database::selectOne('SELECT 1 AS ok');
+        $dbOk = (int) ($row['ok'] ?? 0) === 1;
+    } catch (Throwable) {
+        $dbOk = false;
+    }
+
+    $failed += ap_console_check('Database connection', $dbOk);
+
+    echo "\n";
+    echo $failed === 0
+        ? "[OK] install:check passed\n"
+        : "[FAIL] install:check has {$failed} issue(s)\n";
+
+    return $failed === 0 ? 0 : 1;
+}
+
+function ap_console_storage_prepare(string $appPath): int
+{
+    $failed = 0;
+
+    foreach (ap_console_storage_directories($appPath) as $dir) {
+        if (!is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+
+        if (is_dir($dir)) {
+            @chmod($dir, 0775);
+        }
+
+        $failed += ap_console_check("Prepared {$dir}", is_dir($dir) && is_writable($dir));
+    }
+
+    return $failed === 0 ? 0 : 1;
+}
+
+function ap_console_cache_clear(string $appPath): int
+{
+    DynamicRouteRegistry::clearCache();
+    $deletedCacheEntries = Cache::flush();
+    $deletedViewFiles = ap_console_delete_files($appPath . '/storage/cache/views', '/\\.(php|tmp)$/');
+
+    echo "[OK] Dynamic route cache cleared\n";
+    echo "[OK] File cache entries deleted: {$deletedCacheEntries}\n";
+    echo "[OK] Compiled views deleted: {$deletedViewFiles}\n";
+
+    return 0;
+}
+
+function ap_console_app_key(string $appPath, array $options): int
+{
+    $envPath = $appPath . '/.env';
+    if (!is_file($envPath)) {
+        fwrite(STDERR, "[FAIL] {$envPath} not found. Copy app/.env.example to app/.env first.\n");
+        return 1;
+    }
+
+    $envContent = (string) file_get_contents($envPath);
+    $hasExistingKey = preg_match('/^APP_KEY=.*/m', $envContent) === 1;
+
+    if ($hasExistingKey && empty($options['force'])) {
+        fwrite(STDERR, "[ABORT] APP_KEY already exists. Use --force to rotate it.\n");
+        return 1;
+    }
+
+    $appKey = 'base64:' . base64_encode(random_bytes(32));
+    if ($hasExistingKey) {
+        $envContent = preg_replace('/^APP_KEY=.*/m', 'APP_KEY=' . $appKey, $envContent);
+    } else {
+        $envContent = rtrim($envContent) . "\nAPP_KEY={$appKey}\n";
+    }
+
+    if ($envContent === null || file_put_contents($envPath, $envContent, LOCK_EX) === false) {
+        fwrite(STDERR, "[FAIL] Could not write APP_KEY to {$envPath}\n");
+        return 1;
+    }
+
+    echo "[OK] APP_KEY written to {$envPath}\n";
+    return 0;
+}
+
+function ap_console_db_migrate(string $appPath, array $options): int
+{
+    ap_console_ensure_schema_migrations_table();
+
+    $migrationFiles = glob($appPath . '/core/database/migrations/*.php') ?: [];
+    sort($migrationFiles, SORT_STRING);
+
+    $appliedRows = Database::select('SELECT migration FROM schema_migrations ORDER BY migration ASC');
+    $applied = array_fill_keys(array_column($appliedRows, 'migration'), true);
+
+    $tables = array_values(array_diff(DatabaseBuilder::getTables(), ['schema_migrations']));
+    $isBaseline = (bool) ($options['baseline'] ?? false);
+
+    if ($isBaseline) {
+        foreach ($migrationFiles as $migrationFile) {
+            ap_console_mark_migration_applied(basename($migrationFile));
+        }
+
+        echo "[OK] Baseline recorded for " . count($migrationFiles) . " migration file(s)\n";
+        return 0;
+    }
+
+    if ($tables !== [] && $applied === []) {
+        fwrite(STDERR, "[ABORT] Existing tables detected but schema_migrations is empty.\n");
+        fwrite(STDERR, "Run `php app/bin/console db:migrate --baseline` once if this is an existing install.\n");
+        return 1;
+    }
+
+    $executed = 0;
+    foreach ($migrationFiles as $migrationFile) {
+        $migrationName = basename($migrationFile);
+        if (isset($applied[$migrationName])) {
+            echo "[SKIP] {$migrationName}\n";
+            continue;
+        }
+
+        echo "[RUN] {$migrationName}\n";
+        ob_start();
+        ap_console_execute_migration_file($migrationFile);
+        $migrationOutput = trim((string) ob_get_clean());
+
+        if ($migrationOutput !== '') {
+            echo $migrationOutput . "\n";
+        }
+
+        ap_console_mark_migration_applied($migrationName);
+        $executed++;
+        echo "[OK] {$migrationName}\n";
+    }
+
+    echo "[OK] db:migrate completed, executed {$executed} migration(s)\n";
+
+    if (!empty($options['seed'])) {
+        return ap_console_db_seed($options);
+    }
+
+    return 0;
+}
+
+function ap_console_db_seed(array $options): int
+{
+    ap_console_seed_system_data($options);
+
+    if (!empty($options['demo'])) {
+        ap_console_seed_demo_data();
+    }
+
+    echo "[OK] db:seed completed\n";
+
+    return 0;
+}
+
+function ap_console_seed_system_data(array $options): void
+{
+    PermissionRegistry::loadDefaults();
+    try {
+        PermissionRegistry::sync();
+    } catch (Throwable) {
+        // Continue if permissions table is not ready in partial installs.
+    }
+
+    $role = Role::findBySlug('super-admin');
+    if (!$role) {
+        $role = Role::create([
+            'name' => 'Super Admin',
+            'slug' => 'super-admin',
+            'description' => 'Full system access',
+            'is_system' => 1,
+            'priority' => 1,
+        ]);
+        echo "[OK] Created role super-admin\n";
+    } else {
+        echo "[SKIP] Role super-admin already exists\n";
+    }
+
+    $language = Language::findByCode('sr');
+    if (!$language) {
+        $language = Language::create([
+            'code' => 'sr',
+            'name' => 'Serbian',
+            'native_name' => 'Srpski',
+            'flag' => 'rs',
+            'country_code' => 'RS',
+            'is_active' => 1,
+            'is_site_language' => 1,
+            'is_default' => 1,
+            'sort_order' => 1,
+        ]);
+        echo "[OK] Created default language sr\n";
+    } else {
+        echo "[SKIP] Language sr already exists\n";
+    }
+
+    if (!Page::findByRoute('/', 'sr')) {
+        Page::create([
+            'title' => 'Pocetna',
+            'slug' => 'pocetna',
+            'route' => '/',
+            'page_type' => 'custom',
+            'application' => 'homepage',
+            'content' => '<h1>Pocetna</h1>',
+            'is_active' => 1,
+            'is_in_menu' => 0,
+            'menu_order' => 0,
+            'language_id' => $language?->id,
+        ]);
+        echo "[OK] Created homepage route /\n";
+    } else {
+        echo "[SKIP] Homepage route / already exists\n";
+    }
+
+    $adminEmail = (string) ($options['admin-email'] ?? $_ENV['APP_SEED_ADMIN_EMAIL'] ?? 'admin@example.com');
+    $adminUsername = (string) ($options['admin-username'] ?? $_ENV['APP_SEED_ADMIN_USERNAME'] ?? 'admin');
+    $adminPassword = (string) ($options['admin-password'] ?? $_ENV['APP_SEED_ADMIN_PASSWORD'] ?? '');
+
+    if ($adminPassword === '') {
+        $adminPassword = 'Ap!' . bin2hex(random_bytes(8));
+    }
+
+    $admin = User::findByEmail($adminEmail);
+    if (!$admin) {
+        $admin = User::createUser([
+            'first_name' => 'Admin',
+            'last_name' => 'User',
+            'username' => $adminUsername,
+            'email' => $adminEmail,
+            'password' => $adminPassword,
+            'status' => 'active',
+            'email_verified_at' => time(),
+        ]);
+        echo "[OK] Created admin user {$adminEmail}\n";
+        echo "[INFO] Admin password: {$adminPassword}\n";
+    } else {
+        echo "[SKIP] Admin user {$adminEmail} already exists\n";
+    }
+
+    if ($admin && $role && !$admin->hasRole('super-admin')) {
+        $admin->attachRole($role);
+        echo "[OK] Attached super-admin role to {$adminEmail}\n";
+    }
+}
+
+function ap_console_seed_demo_data(): void
+{
+    $language = Language::findByCode('sr') ?? Language::getDefault();
+    $languageId = $language?->id;
+
+    if (Page::findByRoute('/demo', 'sr')) {
+        echo "[SKIP] Demo page /demo already exists\n";
+        return;
+    }
+
+    Page::create([
+        'title' => 'Demo stranica',
+        'slug' => 'demo',
+        'route' => '/demo',
+        'page_type' => 'custom',
+        'application' => 'demo',
+        'content' => '<h1>Demo stranica</h1><p>Primer sadržaja iz opcionog demo seed-a.</p>',
+        'is_active' => 1,
+        'is_in_menu' => 1,
+        'menu_order' => 99,
+        'language_id' => $languageId,
+    ]);
+
+    echo "[OK] Created demo page /demo\n";
+}
+
+function ap_console_ensure_schema_migrations_table(): void
+{
+    $driver = Database::getDriver();
+
+    if ($driver === 'pgsql') {
+        Database::execute(
+            'CREATE TABLE IF NOT EXISTS schema_migrations (
+                id SERIAL PRIMARY KEY,
+                migration VARCHAR(255) NOT NULL UNIQUE,
+                migrated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )'
+        );
+        return;
+    }
+
+    Database::execute(
+        'CREATE TABLE IF NOT EXISTS schema_migrations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            migration VARCHAR(255) NOT NULL UNIQUE,
+            migrated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+}
+
+function ap_console_mark_migration_applied(string $migrationName): void
+{
+    if (Database::table('schema_migrations')->where('migration', $migrationName)->exists()) {
+        return;
+    }
+
+    Database::table('schema_migrations')->insert([
+        'migration' => $migrationName,
+        'migrated_at' => date('Y-m-d H:i:s'),
+    ]);
+}
+
+function ap_console_execute_migration_file(string $migrationFile): void
+{
+    $declaredBefore = get_declared_classes();
+    require $migrationFile;
+    $newClasses = array_diff(get_declared_classes(), $declaredBefore);
+    $executedClasses = [];
+
+    foreach ($newClasses as $className) {
+        $normalizedClass = ltrim($className, '\\');
+        if (!str_starts_with($normalizedClass, 'Migration_') && !str_contains($normalizedClass, '\\Migration_')) {
+            continue;
+        }
+
+        $reflection = new ReflectionClass($className);
+        if (!$reflection->isInstantiable() || !$reflection->hasMethod('up')) {
+            continue;
+        }
+
+        $sourceFile = $reflection->getFileName();
+        if ($sourceFile === false || realpath($sourceFile) !== realpath($migrationFile)) {
+            continue;
+        }
+
+        $canonicalClass = $reflection->getName();
+        if (isset($executedClasses[$canonicalClass])) {
+            continue;
+        }
+
+        $constructor = $reflection->getConstructor();
+        if ($constructor && $constructor->getNumberOfRequiredParameters() > 0) {
+            throw new RuntimeException("Migration class {$canonicalClass} requires constructor arguments.");
+        }
+
+        $reflection->newInstance()->up();
+        $executedClasses[$canonicalClass] = true;
+    }
+}
+
+function ap_console_storage_directories(string $appPath): array
+{
+    return [
+        $appPath . '/storage',
+        $appPath . '/storage/cache',
+        $appPath . '/storage/cache/views',
+        $appPath . '/storage/logs',
+        $appPath . '/storage/rate_limits',
+        $appPath . '/storage/uploads',
+        $appPath . '/storage/uploads/blog',
+        $appPath . '/storage/avatars',
+    ];
+}
+
+function ap_console_delete_files(string $dir, string $pattern): int
+{
+    if (!is_dir($dir)) {
+        return 0;
+    }
+
+    $deleted = 0;
+    $iterator = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST
+    );
+
+    foreach ($iterator as $item) {
+        if ($item->isFile() && preg_match($pattern, $item->getFilename())) {
+            if (@unlink($item->getPathname())) {
+                $deleted++;
+            }
+        }
+    }
+
+    return $deleted;
+}
+
+function ap_console_check(string $label, bool $ok): int
+{
+    echo ($ok ? '[OK] ' : '[FAIL] ') . $label . "\n";
+
+    return $ok ? 0 : 1;
+}
+
+function ap_console_parse_options(array $args): array
+{
+    $options = [];
+
+    foreach ($args as $arg) {
+        if (!str_starts_with($arg, '--')) {
+            continue;
+        }
+
+        $arg = substr($arg, 2);
+        if (str_contains($arg, '=')) {
+            [$key, $value] = explode('=', $arg, 2);
+            $options[$key] = $value;
+        } else {
+            $options[$arg] = true;
+        }
+    }
+
+    return $options;
+}

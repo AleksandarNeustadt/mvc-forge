@@ -1,0 +1,26 @@
+{
+  "name": "mvc-forge",
+  "version": "0.1.0",
+  "description": "MVC Forge frontend build pipeline for a custom PHP MVC/CMS framework.",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:https": "VITE_DEV_HTTPS=1 vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "autoprefixer": "^10.4.23",
+    "ionicons": "^7.0.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "vite": "^6.0.0",
+    "vite-plugin-static-copy": "^3.1.4"
+  },
+  "dependencies": {
+    "flag-icons": "^7.5.0"
+  }
+}

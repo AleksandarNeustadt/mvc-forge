@@ -1,0 +1,29 @@
+# Dependencies
+/node_modules/
+/app/vendor/
+
+# Build outputs
+/public_html/dist/
+
+# Runtime files
+/app/.env
+/app/.env.*
+!/app/.env.example
+/app/storage/cache/
+/app/storage/logs/
+/app/storage/rate_limits/
+/app/storage/uploads/
+/app/storage/avatars/
+
+# Hosting/runtime folders
+/logs/
+/stats/
+/document_errors/
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
