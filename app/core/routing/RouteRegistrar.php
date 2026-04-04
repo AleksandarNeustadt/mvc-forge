@@ -101,25 +101,10 @@ class RouteRegistrar {
 
         // Update pending route if exists
         if ($this->pendingRoute) {
-            // Merge with existing middleware, ensuring group middleware is included
-            $existingMiddleware = $this->pendingRoute['middleware'] ?? [];
-            
-            // Check if we're in a group and merge group middleware first
-            if (!empty($this->collection->getGroupStack())) {
-                $groupStack = $this->collection->getGroupStack();
-                $groupAttributes = end($groupStack);
-                if (isset($groupAttributes['middleware'])) {
-                    // Group middleware should come first, then route middleware
-                    $existingMiddleware = array_merge(
-                        $groupAttributes['middleware'],
-                        $existingMiddleware
-                    );
-                }
-            }
-            
-            // Now merge the new middleware
+            // Pending route already contains group middleware from RouteCollection::add(),
+            // so only append route-specific middleware here to avoid duplicated middleware.
             $this->pendingRoute['middleware'] = array_merge(
-                $existingMiddleware,
+                $this->pendingRoute['middleware'] ?? [],
                 $middleware
             );
             

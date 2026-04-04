@@ -691,13 +691,17 @@ class ApiController extends Controller
             $this->jsonResponse(false, 'Title is required', null, 400);
             return;
         }
-        
-        $languageId = null;
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $languageId = $language->id;
-            }
+
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
+        }
+
+        $languageId = $this->resolveLanguageIdFromPayload($data);
+        $slug = $data['slug'] ?? str_slug($data['title']);
+        if ($this->contentSlugExists(BlogPost::class, (string) $slug, $languageId)) {
+            $this->jsonResponse(false, 'Slug already exists for this language', null, 422);
+            return;
         }
         
         $userId = $_SESSION['user_id'] ?? null;
