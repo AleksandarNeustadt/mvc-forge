@@ -11,6 +11,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Architecture, CLI, installation, environment, release, support, security, and contribution documentation
 - GitHub issue templates and pull request template
 - `install:setup` command with local/hosting modes, public scaffold generation, `.env` bootstrap, and hosting diagnostics
+- `docs/AI_CONTENT_WORKFLOW.md` with prompt templates and API-first publishing workflow for AI agents
 
 ## [0.1.0] - 2026-04-03
 

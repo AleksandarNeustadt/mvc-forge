@@ -44,6 +44,7 @@ If `--admin-password` is omitted, `db:seed` generates a one-time password and pr
 
 - [Installation Guide](docs/INSTALLATION.md)
 - [Private GitHub Composer Setup](docs/PRIVATE_GITHUB_INSTALL.md)
+- [AI Content Workflow](docs/AI_CONTENT_WORKFLOW.md)
 - [Architecture Overview](docs/ARCHITECTURE.md)
 - [CLI Reference](docs/CLI.md)
 - [Environment Reference](docs/ENVIRONMENT.md)
