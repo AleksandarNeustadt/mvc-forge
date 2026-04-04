@@ -72,6 +72,25 @@ class ApiToken extends Model
     }
 
     /**
+     * Find the newest non-expired token for a user.
+     */
+    public static function findActiveTokenForUser(int $userId): ?static
+    {
+        $result = static::query()
+            ->where('user_id', $userId)
+            ->whereRaw('(expires_at IS NULL OR expires_at > ?)', [time()])
+            ->orderByDesc('created_at')
+            ->first();
+
+        if (!$result) {
+            return null;
+        }
+
+        $instance = new static();
+        return $instance->newFromBuilder($result);
+    }
+
+    /**
      * Check if token is expired
      */
     public function isExpired(): bool

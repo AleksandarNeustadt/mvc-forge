@@ -3,6 +3,12 @@
 if (is_object($user)) {
     $user = (array) $user;
 }
+if (is_object($apiToken ?? null)) {
+    $apiToken = (array) $apiToken;
+}
+if (!is_array($apiToken ?? null)) {
+    $apiToken = [];
+}
 ?>
 <div class="p-8">
     
@@ -99,6 +105,49 @@ if (is_object($user)) {
         </div>
     </div>
 
+    <!-- API Token Card -->
+    <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6 mb-6">
+        <h3 class="text-xl font-bold text-white mb-2">API Token</h3>
+        <p class="text-slate-400 mb-4">Token za API upisivanje podataka u sistem. Koristi ga kao <span class="text-slate-200">Authorization: Bearer</span> header.</p>
+
+        <div class="flex flex-col sm:flex-row gap-3 mb-4">
+            <input
+                id="dashboardApiToken"
+                type="text"
+                readonly
+                value="<?= e($apiToken['token'] ?? '') ?>"
+                class="flex-1 w-full bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-100 font-mono"
+            >
+            <button
+                type="button"
+                onclick="navigator.clipboard.writeText(document.getElementById('dashboardApiToken').value)"
+                class="inline-flex items-center justify-center gap-2 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors"
+            >
+                <ion-icon name="copy-outline"></ion-icon>
+                Copy
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <p class="text-sm text-slate-400 mb-1">Token Name</p>
+                <p class="text-white"><?= e($apiToken['name'] ?? 'Dashboard API Token') ?></p>
+            </div>
+            <div>
+                <p class="text-sm text-slate-400 mb-1">Expires At</p>
+                <p class="text-white">
+                    <?= !empty($apiToken['expires_at']) ? date('Y-m-d H:i', is_int($apiToken['expires_at']) ? $apiToken['expires_at'] : strtotime((string) $apiToken['expires_at'])) : 'Never' ?>
+                </p>
+            </div>
+            <div>
+                <p class="text-sm text-slate-400 mb-1">Last Used</p>
+                <p class="text-white">
+                    <?= !empty($apiToken['last_used_at']) ? date('Y-m-d H:i', is_int($apiToken['last_used_at']) ? $apiToken['last_used_at'] : strtotime((string) $apiToken['last_used_at'])) : 'Never' ?>
+                </p>
+            </div>
+        </div>
+    </div>
+
     <!-- Actions Card -->
     <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6">
         <h3 class="text-xl font-bold text-white mb-4">Quick Actions</h3>
@@ -171,4 +220,3 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
 </div>
-

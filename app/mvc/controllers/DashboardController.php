@@ -19,6 +19,7 @@ use App\Core\services\DashboardRoleService;
 use App\Core\services\DashboardSchemaService;
 use App\Core\services\DashboardUserService;
 use App\Core\view\Form;
+use App\Models\ApiToken;
 use App\Models\BlogCategory;
 use App\Models\BlogPost;
 use App\Models\BlogTag;
@@ -464,8 +465,14 @@ class DashboardController extends Controller
             $this->abort(404, 'User not found');
         }
 
+        $apiToken = ApiToken::findActiveTokenForUser($id);
+        if (!$apiToken) {
+            $apiToken = ApiToken::createToken($id, 'Dashboard API Token');
+        }
+
         $this->view('dashboard/user-manager/show', [
-            'user' => $this->dashboardUserService->normalizeUserArray($user)
+            'user' => $this->dashboardUserService->normalizeUserArray($user),
+            'apiToken' => $apiToken->toArray(),
         ]);
     }
 

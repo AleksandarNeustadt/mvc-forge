@@ -11,6 +11,7 @@ use App\Core\security\CSRF;
 use App\Core\security\Security;
 use App\Core\services\UploadManager;
 use App\Core\view\Form;
+use App\Models\ApiToken;
 use App\Models\AuditLog;
 use App\Models\User;use BadMethodCallException;
 use Closure;
@@ -170,12 +171,29 @@ class UserController extends Controller {
             $userArray = [];
         }
 
+        $apiToken = ApiToken::findActiveTokenForUser((int) $userId);
+        if (!$apiToken) {
+            $apiToken = ApiToken::createToken((int) $userId, 'Profile API Token');
+        }
+
+        $apiTokenArray = $apiToken->toArray();
+        if (is_object($apiTokenArray)) {
+            $apiTokenArray = json_decode(json_encode($apiTokenArray), true);
+        }
+        if (!is_array($apiTokenArray)) {
+            $apiTokenArray = [];
+        }
+
         if ($this->wantsJson()) {
+            $userArray['api_token'] = $apiTokenArray;
             $this->success($userArray);
         }
 
         // Render profile view
-        $this->view('user/profile', ['profileUser' => $userArray]);
+        $this->view('user/profile', [
+            'profileUser' => $userArray,
+            'profileApiToken' => $apiTokenArray,
+        ]);
     }
 
     /**

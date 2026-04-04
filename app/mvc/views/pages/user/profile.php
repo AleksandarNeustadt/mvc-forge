@@ -7,6 +7,13 @@ if (!is_array($profileUser)) {
     $profileUser = [];
 }
 
+if (is_object($profileApiToken ?? null)) {
+    $profileApiToken = (array) $profileApiToken;
+}
+if (!is_array($profileApiToken ?? null)) {
+    $profileApiToken = [];
+}
+
 // Get user roles
 $userRoles = [];
 try {
@@ -138,6 +145,58 @@ $lang = $router->lang ?? 'sr';
                         </div>
                     </div>
                 <?php endif; ?>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Token Card -->
+    <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700/50 rounded-xl p-6 mb-6">
+        <h3 class="text-xl font-bold text-white mb-2">API Token</h3>
+        <p class="text-slate-400 mb-4">Ovaj token se koristi za API upisivanje podataka u sistem preko <span class="text-slate-200">Authorization: Bearer</span> headera.</p>
+
+        <div class="space-y-4">
+            <div>
+                <p class="text-sm text-slate-400 mb-2">Bearer Token</p>
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <input
+                        id="profileApiToken"
+                        type="text"
+                        readonly
+                        value="<?= e($profileApiToken['token'] ?? '') ?>"
+                        class="flex-1 w-full bg-slate-900/70 border border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-100 font-mono"
+                    >
+                    <button
+                        type="button"
+                        onclick="navigator.clipboard.writeText(document.getElementById('profileApiToken').value)"
+                        class="inline-flex items-center justify-center gap-2 px-4 py-3 bg-slate-700 hover:bg-slate-600 text-white font-medium rounded-lg transition-colors"
+                    >
+                        <ion-icon name="copy-outline"></ion-icon>
+                        Copy
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <p class="text-sm text-slate-400 mb-1">Token Name</p>
+                    <p class="text-white"><?= e($profileApiToken['name'] ?? 'Profile API Token') ?></p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-400 mb-1">Expires At</p>
+                    <p class="text-white">
+                        <?= !empty($profileApiToken['expires_at']) ? date('Y-m-d H:i', is_int($profileApiToken['expires_at']) ? $profileApiToken['expires_at'] : strtotime((string) $profileApiToken['expires_at'])) : 'Never' ?>
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-400 mb-1">Last Used</p>
+                    <p class="text-white">
+                        <?= !empty($profileApiToken['last_used_at']) ? date('Y-m-d H:i', is_int($profileApiToken['last_used_at']) ? $profileApiToken['last_used_at'] : strtotime((string) $profileApiToken['last_used_at'])) : 'Never' ?>
+                    </p>
+                </div>
+                <div>
+                    <p class="text-sm text-slate-400 mb-1">Primer upotrebe</p>
+                    <p class="text-xs text-slate-200 font-mono break-all">Authorization: Bearer <?= e($profileApiToken['token'] ?? '') ?></p>
+                </div>
             </div>
         </div>
     </div>
