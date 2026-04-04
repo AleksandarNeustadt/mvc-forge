@@ -25,6 +25,7 @@ $options = ap_console_parse_options(array_slice($argv, 2));
 try {
     $exitCode = match ($command) {
         'help', '--help', '-h' => ap_console_show_help(),
+        'install:setup' => ap_console_install_setup($appPath, $options),
         'install:check' => ap_console_install_check($appPath),
         'storage:prepare' => ap_console_storage_prepare($appPath),
         'cache:clear' => ap_console_cache_clear($appPath),
@@ -46,6 +47,8 @@ function ap_console_show_help(): int
     echo "Usage:\n";
     echo "  php app/bin/console <command> [options]\n\n";
     echo "Commands:\n";
+    echo "  install:setup [--mode=hosting|local] [--domain=<domain>] [--public-path=<path>] [--force]\n";
+    echo "                                Prepare public_html, .env, storage and hosting diagnostics\n";
     echo "  install:check                 Check PHP, extensions, .env, storage and DB connectivity\n";
     echo "  storage:prepare               Create storage/cache/log/upload directories\n";
     echo "  cache:clear                   Clear file cache, compiled views and dynamic route cache\n";
@@ -68,6 +71,51 @@ function ap_console_unknown_command(string $command): int
     ap_console_show_help();
 
     return 1;
+}
+
+function ap_console_install_setup(string $appPath, array $options): int
+{
+    $mode = strtolower((string) ($options['mode'] ?? 'hosting'));
+    $projectRoot = dirname($appPath);
+    $publicPath = ap_console_resolve_public_path($projectRoot, (string) ($options['public-path'] ?? ''));
+    $domain = trim((string) ($options['domain'] ?? basename($projectRoot)));
+    $force = !empty($options['force']);
+
+    if (!in_array($mode, ['local', 'hosting'], true)) {
+        fwrite(STDERR, "[FAIL] Unsupported install mode '{$mode}'. Use --mode=local or --mode=hosting.\n");
+        return 1;
+    }
+
+    echo "[INFO] MVC Forge install setup\n";
+    echo "[INFO] Mode: {$mode}\n";
+    echo "[INFO] App path: {$appPath}\n";
+    echo "[INFO] Public path: {$publicPath}\n";
+    echo "[INFO] Domain: {$domain}\n\n";
+
+    $failed = 0;
+    $failed += ap_console_prepare_public_html($appPath, $publicPath, $force);
+    $failed += ap_console_prepare_env_file($appPath, $domain);
+    $failed += ap_console_storage_prepare($appPath);
+    $failed += ap_console_ensure_app_key($appPath);
+
+    if ($mode === 'hosting') {
+        $failed += ap_console_hosting_diagnostics($appPath, $publicPath, $domain);
+    }
+
+    echo "\n";
+    if ($failed > 0) {
+        echo "[FAIL] install:setup completed with {$failed} issue(s)\n";
+        echo "[INFO] Fix the reported items, then run `php app/bin/console install:setup --mode={$mode}` again.\n";
+        return 1;
+    }
+
+    echo "[OK] install:setup completed\n";
+    echo "[NEXT] Review app/.env, then run:\n";
+    echo "       php app/bin/console install:check\n";
+    echo "       php app/bin/console db:migrate --seed --admin-email=admin@{$domain} --admin-username=admin\n";
+    echo "       php app/bin/console cache:clear\n";
+
+    return 0;
 }
 
 function ap_console_install_check(string $appPath): int
@@ -145,7 +193,7 @@ function ap_console_app_key(string $appPath, array $options): int
     }
 
     $envContent = (string) file_get_contents($envPath);
-    $hasExistingKey = preg_match('/^APP_KEY=.*/m', $envContent) === 1;
+    $hasExistingKey = preg_match('/^APP_KEY=(.+)$/m', $envContent) === 1;
 
     if ($hasExistingKey && empty($options['force'])) {
         fwrite(STDERR, "[ABORT] APP_KEY already exists. Use --force to rotate it.\n");
@@ -472,6 +520,317 @@ function ap_console_check(string $label, bool $ok): int
     echo ($ok ? '[OK] ' : '[FAIL] ') . $label . "\n";
 
     return $ok ? 0 : 1;
+}
+
+function ap_console_resolve_public_path(string $projectRoot, string $requestedPublicPath): string
+{
+    if ($requestedPublicPath === '') {
+        return $projectRoot . '/public_html';
+    }
+
+    if (str_starts_with($requestedPublicPath, '/')) {
+        return rtrim($requestedPublicPath, '/');
+    }
+
+    return rtrim($projectRoot . '/' . ltrim($requestedPublicPath, '/'), '/');
+}
+
+function ap_console_prepare_public_html(string $appPath, string $publicPath, bool $force): int
+{
+    $failed = 0;
+
+    if (!is_dir($publicPath) && !@mkdir($publicPath, 0775, true)) {
+        return ap_console_check("Create public directory {$publicPath}", false);
+    }
+
+    $failed += ap_console_check("Public directory {$publicPath}", is_dir($publicPath) && is_writable($publicPath));
+    $failed += ap_console_write_file_if_needed(
+        $publicPath . '/index.php',
+        ap_console_public_index_template(),
+        $force
+    );
+    $failed += ap_console_write_file_if_needed(
+        $publicPath . '/bootstrap_paths.php',
+        ap_console_public_bootstrap_paths_template(),
+        $force
+    );
+    $failed += ap_console_write_file_if_needed(
+        $publicPath . '/.htaccess',
+        ap_console_public_htaccess_template(),
+        $force
+    );
+
+    $uploadsLink = $publicPath . '/uploads';
+    $uploadsTarget = $appPath . '/storage/uploads';
+    if (!file_exists($uploadsLink) && !is_link($uploadsLink)) {
+        $relativeTarget = ap_console_relative_path(dirname($uploadsLink), $uploadsTarget);
+        if (!@symlink($relativeTarget, $uploadsLink)) {
+            $failed += ap_console_check("Create uploads symlink {$uploadsLink} -> {$relativeTarget}", false);
+        } else {
+            $failed += ap_console_check("Create uploads symlink {$uploadsLink} -> {$relativeTarget}", true);
+        }
+    } else {
+        $failed += ap_console_check("Uploads link exists {$uploadsLink}", true);
+    }
+
+    if (is_file($publicPath . '/index.html')) {
+        echo "[INFO] Existing {$publicPath}/index.html detected.\n";
+        echo "[INFO] Keep `DirectoryIndex index.php index.html` in .htaccess or rename index.html if hosting still serves a placeholder page.\n";
+    }
+
+    return $failed;
+}
+
+function ap_console_prepare_env_file(string $appPath, string $domain): int
+{
+    $envPath = $appPath . '/.env';
+    $examplePath = $appPath . '/.env.example';
+
+    if (is_file($envPath)) {
+        return ap_console_check('.env exists', true);
+    }
+
+    if (!is_file($examplePath)) {
+        return ap_console_check('.env.example exists', false);
+    }
+
+    $content = (string) file_get_contents($examplePath);
+    $content = preg_replace('/^APP_URL=.*/m', 'APP_URL=https://' . $domain, $content);
+    $content = preg_replace('/^CORS_ALLOWED_ORIGINS=.*/m', 'CORS_ALLOWED_ORIGINS=https://' . $domain, $content);
+    $content = preg_replace('/^BRAND_NAME=.*/m', 'BRAND_NAME=' . $domain, $content);
+
+    if ($content === null || file_put_contents($envPath, $content, LOCK_EX) === false) {
+        return ap_console_check("Create {$envPath} from .env.example", false);
+    }
+
+    return ap_console_check("Create {$envPath} from .env.example", true);
+}
+
+function ap_console_ensure_app_key(string $appPath): int
+{
+    $envPath = $appPath . '/.env';
+    if (!is_file($envPath)) {
+        return ap_console_check('APP_KEY in .env', false);
+    }
+
+    $envContent = (string) file_get_contents($envPath);
+    if (preg_match('/^APP_KEY=(.+)$/m', $envContent) === 1) {
+        return ap_console_check('APP_KEY in .env', true);
+    }
+
+    return ap_console_app_key($appPath, []);
+}
+
+function ap_console_hosting_diagnostics(string $appPath, string $publicPath, string $domain): int
+{
+    $failed = 0;
+    $projectRoot = dirname($appPath);
+    $requiredPublicFiles = [
+        $publicPath . '/index.php',
+        $publicPath . '/bootstrap_paths.php',
+        $publicPath . '/.htaccess',
+    ];
+
+    foreach ($requiredPublicFiles as $requiredPublicFile) {
+        $failed += ap_console_check("Hosting file {$requiredPublicFile}", is_file($requiredPublicFile));
+    }
+
+    $htaccessContent = is_file($publicPath . '/.htaccess')
+        ? (string) file_get_contents($publicPath . '/.htaccess')
+        : '';
+
+    $failed += ap_console_check(
+        '.htaccess prefers index.php before index.html',
+        str_contains($htaccessContent, 'DirectoryIndex index.php index.html')
+    );
+    $failed += ap_console_check(
+        '.htaccess uses Apache 2.4 dotfile protection',
+        str_contains($htaccessContent, 'Require all denied')
+    );
+
+    $cliOpenBaseDir = (string) ini_get('open_basedir');
+    if ($cliOpenBaseDir === '' || str_contains($cliOpenBaseDir, $appPath)) {
+        $failed += ap_console_check('CLI open_basedir allows app path', true);
+    } else {
+        $failed += ap_console_check('CLI open_basedir allows app path', false);
+        echo "[FIX] Add {$appPath} to CLI open_basedir.\n";
+    }
+
+    $fpmPoolPath = '/etc/php/' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . '/fpm/pool.d/' . $domain . '.conf';
+    if (is_file($fpmPoolPath) && is_readable($fpmPoolPath)) {
+        $poolConfig = (string) file_get_contents($fpmPoolPath);
+        $poolAllowsApp = str_contains($poolConfig, $appPath);
+        $failed += ap_console_check("FPM pool open_basedir allows {$appPath}", $poolAllowsApp);
+        if (!$poolAllowsApp) {
+            echo "[FIX] Edit {$fpmPoolPath} and include {$appPath} in php_admin_value[open_basedir].\n";
+            echo "[FIX] Example:\n";
+            echo "      php_admin_value[open_basedir] = {$projectRoot}/public_html:{$projectRoot}/private:{$appPath}:/tmp\n";
+            echo "[FIX] Then restart PHP-FPM, for example: sudo systemctl restart php" . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION . "-fpm\n";
+        }
+    } else {
+        echo "[INFO] Could not read {$fpmPoolPath}. If HTTP 500 shows open_basedir errors, add {$appPath} to that domain's PHP-FPM pool config.\n";
+    }
+
+    if (is_file($publicPath . '/ob.php')) {
+        echo "[WARN] Remove {$publicPath}/ob.php after diagnostics.\n";
+    }
+
+    return $failed;
+}
+
+function ap_console_write_file_if_needed(string $path, string $content, bool $force): int
+{
+    if (is_file($path) && !$force) {
+        return ap_console_check("Keep existing {$path}", true);
+    }
+
+    if (file_put_contents($path, $content, LOCK_EX) === false) {
+        return ap_console_check("Write {$path}", false);
+    }
+
+    return ap_console_check("Write {$path}", true);
+}
+
+function ap_console_relative_path(string $fromDir, string $targetPath): string
+{
+    $fromParts = array_values(array_filter(explode('/', trim(str_replace('\\', '/', $fromDir), '/')), 'strlen'));
+    $targetParts = array_values(array_filter(explode('/', trim(str_replace('\\', '/', $targetPath), '/')), 'strlen'));
+
+    while ($fromParts !== [] && $targetParts !== [] && $fromParts[0] === $targetParts[0]) {
+        array_shift($fromParts);
+        array_shift($targetParts);
+    }
+
+    return str_repeat('../', count($fromParts)) . implode('/', $targetParts);
+}
+
+function ap_console_public_index_template(): string
+{
+    return <<<'PHP'
+<?php
+
+require_once __DIR__ . '/bootstrap_paths.php';
+
+$appPath = ap_resolve_app_path();
+
+require_once $appPath . '/bootstrap/app.php';
+
+ap_bootstrap_http_application($appPath, __DIR__);
+PHP;
+}
+
+function ap_console_public_bootstrap_paths_template(): string
+{
+    return <<<'PHP'
+<?php
+/**
+ * Resolve application root (folder that contains core/, mvc/, .env).
+ * Default: sibling "app" next to this directory (public_html).
+ * Override: APP_ROOT_OVERRIDE = absolute path to app/ (SetEnv / php-fpm / shell).
+ */
+declare(strict_types=1);
+
+if (!function_exists('ap_resolve_app_path')) {
+    function ap_resolve_app_path(): string
+    {
+        $override = $_SERVER['APP_ROOT_OVERRIDE'] ?? $_ENV['APP_ROOT_OVERRIDE'] ?? '';
+        if ($override === '' && function_exists('getenv')) {
+            $g = getenv('APP_ROOT_OVERRIDE');
+            if ($g !== false && $g !== '') {
+                $override = $g;
+            }
+        }
+        $normalize = static function (string $path): string {
+            $path = rtrim(str_replace('\\', '/', $path), '/');
+            $realPath = realpath($path);
+
+            return $realPath !== false ? str_replace('\\', '/', $realPath) : $path;
+        };
+
+        $isValidAppPath = static function (string $path): bool {
+            return $path !== '' && is_file(rtrim($path, '/') . '/core/config/Env.php');
+        };
+
+        $override = $normalize((string) $override);
+        if ($isValidAppPath($override)) {
+            return $override;
+        }
+
+        $candidates = [];
+        $addCandidate = static function (?string $path) use (&$candidates, $normalize): void {
+            if (!is_string($path) || trim($path) === '') {
+                return;
+            }
+
+            $normalized = $normalize($path);
+            if (!in_array($normalized, $candidates, true)) {
+                $candidates[] = $normalized;
+            }
+        };
+
+        $scriptDir = $normalize(__DIR__);
+        $documentRoot = isset($_SERVER['DOCUMENT_ROOT']) ? $normalize((string) $_SERVER['DOCUMENT_ROOT']) : '';
+        $scriptFilename = isset($_SERVER['SCRIPT_FILENAME']) ? $normalize(dirname((string) $_SERVER['SCRIPT_FILENAME'])) : '';
+
+        $addCandidate($scriptDir . '/app');
+        $addCandidate(dirname($scriptDir) . '/app');
+        $addCandidate(dirname(dirname($scriptDir)) . '/app');
+
+        if ($documentRoot !== '') {
+            $addCandidate($documentRoot . '/app');
+            $addCandidate(dirname($documentRoot) . '/app');
+            $addCandidate(dirname(dirname($documentRoot)) . '/app');
+        }
+
+        if ($scriptFilename !== '') {
+            $addCandidate($scriptFilename . '/app');
+            $addCandidate(dirname($scriptFilename) . '/app');
+            $addCandidate(dirname(dirname($scriptFilename)) . '/app');
+        }
+
+        foreach ($candidates as $candidate) {
+            if ($isValidAppPath($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return $normalize(dirname(__DIR__) . '/app');
+    }
+}
+PHP;
+}
+
+function ap_console_public_htaccess_template(): string
+{
+    return <<<'APACHE'
+DirectoryIndex index.php index.html
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    RewriteCond %{HTTPS} off
+    RewriteCond %{HTTP:X-Forwarded-Proto} !^https$
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteCond %{REQUEST_URI} (.+)/$
+    RewriteRule ^ %1 [L,R=301]
+
+    RewriteCond %{REQUEST_URI} ^/(baza\.php|adminer\.php|phpmyadmin) [NC]
+    RewriteRule ^ - [L]
+
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^ index.php [L]
+</IfModule>
+
+Options -Indexes
+
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+APACHE;
 }
 
 function ap_console_parse_options(array $args): array

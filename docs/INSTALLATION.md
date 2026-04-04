@@ -11,15 +11,17 @@ cd mvc-forge
 composer install --working-dir=app --no-dev --optimize-autoloader
 npm ci
 npm run build
-
-cp app/.env.example app/.env
 ```
 
-Edit `app/.env`, then run:
+Run the hosting installer helper:
 
 ```bash
-php app/bin/console storage:prepare
-php app/bin/console app:key
+php app/bin/console install:setup --mode=hosting --domain=example.com
+```
+
+Edit `app/.env` DB credentials, then run:
+
+```bash
 php app/bin/console install:check
 php app/bin/console db:migrate --seed --admin-email=admin@example.com --admin-username=admin
 php app/bin/console cache:clear
@@ -44,6 +46,24 @@ php app/bin/console cache:clear
 ```
 
 Use `db:migrate --baseline` only once on legacy databases that already have the schema but do not yet have `schema_migrations` records.
+
+## Local Install Helper
+
+For local development, the helper can scaffold/update `public_html/`, create `.env` from `.env.example`, prepare storage, and generate `APP_KEY`:
+
+```bash
+php app/bin/console install:setup --mode=local --domain=localhost
+```
+
+## Hosting Diagnostics Helper
+
+On hosting, use:
+
+```bash
+php app/bin/console install:setup --mode=hosting --domain=forgeng.dev
+```
+
+If server settings cannot be changed automatically, the command prints manual fix instructions. For example, if PHP-FPM `open_basedir` does not include the application directory, it will tell you which pool file to edit and what path to add.
 
 ## Shared Hosting Without SSH
 

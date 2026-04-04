@@ -10,6 +10,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 - Private GitHub/Composer installation guide
 - Architecture, CLI, installation, environment, release, support, security, and contribution documentation
 - GitHub issue templates and pull request template
+- `install:setup` command with local/hosting modes, public scaffold generation, `.env` bootstrap, and hosting diagnostics
 
 ## [0.1.0] - 2026-04-03
 

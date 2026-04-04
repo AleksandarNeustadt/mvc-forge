@@ -31,11 +31,8 @@ composer install --working-dir=app --no-dev --optimize-autoloader
 npm ci
 npm run build
 
-cp app/.env.example app/.env
-# Update DB_* and APP_URL in app/.env
-
-php app/bin/console storage:prepare
-php app/bin/console app:key
+php app/bin/console install:setup --mode=hosting --domain=example.com
+# Review DB_* values in app/.env
 php app/bin/console install:check
 php app/bin/console db:migrate --seed --admin-email=admin@example.com --admin-username=admin
 php app/bin/console cache:clear
@@ -57,6 +54,12 @@ If `--admin-password` is omitted, `db:seed` generates a one-time password and pr
 - [Changelog](CHANGELOG.md)
 
 ## Development
+
+Local scaffold/update:
+
+```bash
+php app/bin/console install:setup --mode=local --domain=localhost
+```
 
 ```bash
 cd app

@@ -8,6 +8,29 @@ php app/bin/console <command> [options]
 
 ## Commands
 
+### `install:setup`
+
+Prepares installation scaffolding and environment files.
+
+Local mode:
+
+```bash
+php app/bin/console install:setup --mode=local --domain=localhost
+```
+
+Hosting mode:
+
+```bash
+php app/bin/console install:setup --mode=hosting --domain=forgeng.dev
+```
+
+Options:
+
+- `--mode=local|hosting`
+- `--domain=<domain>`
+- `--public-path=<path>`
+- `--force` - overwrite generated `public_html/index.php`, `bootstrap_paths.php`, and `.htaccess`
+
 ### `install:check`
 
 Checks PHP version, required extensions, `.env`, web root entrypoint, writable storage directories, and database connectivity.
