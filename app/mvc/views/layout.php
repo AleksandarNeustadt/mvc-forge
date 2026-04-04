@@ -82,6 +82,9 @@
     global $router;
     $currentLang = $router->lang ?? 'sr';
     $canonicalUrl = $siteOrigin . localized_path($router->getUri() ?? '/', $currentLang);
+
+    $requestPath = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
+    $isDashboardRoute = (bool) preg_match('#^/(?:[a-z]{2}/)?dashboard(?:/|$)#', $requestPath);
     ?>
     
     <title><?= $pageTitle ?></title>
@@ -145,7 +148,7 @@
     <div class="min-h-full flex flex-col">
         <!-- Navigation -->
         <nav class="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-md border-b border-slate-800">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="<?= $isDashboardRoute ? 'max-w-none px-6' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8' ?>">
                 <div class="flex justify-between h-16">
                     <div class="flex items-center">
                         <a href="<?= htmlspecialchars(localized_path('/', $currentLang)) ?>" class="flex items-center space-x-3 group">
@@ -263,11 +266,21 @@
             </div>
         </nav>
 
+        <?php if ($isDashboardRoute): ?>
+            <?php require __DIR__ . '/pages/dashboard/partials/sidebar.php'; ?>
+        <?php endif; ?>
+
         <!-- Main Content -->
-        <main class="flex-grow w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+        <main
+            class="<?= $isDashboardRoute ? 'max-w-none' : 'flex-grow w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8' ?>"
+            <?php if ($isDashboardRoute): ?>
+                style="margin-left: 17.5rem; width: calc(100% - 19rem); min-height: calc(100vh - 4rem - 1px); padding-top: 2rem; padding-right: 1.5rem;"
+            <?php endif; ?>
+        >
             <?php if (isset($viewContent)) echo $viewContent; ?>
         </main>
 
+        <?php if (!$isDashboardRoute): ?>
         <!-- Footer -->
         <footer class="bg-slate-950 border-t border-slate-800 py-12">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -310,6 +323,7 @@
                 </div>
             </div>
         </footer>
+        <?php endif; ?>
     </div>
 
     <!-- Scripts -->

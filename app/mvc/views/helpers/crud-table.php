@@ -532,6 +532,12 @@ function renderCrudTable(array $config): void {
         'languagesData' => $languagesData,
         'filters' => $filtersForJson
     ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+
+    if (empty($GLOBALS['_crudTableAssetLoaded'])) {
+        $GLOBALS['_crudTableAssetLoaded'] = true;
+        $assetVersion = '1.0.' . time();
+        echo '<script src="/dist/crud-table.js?v=' . htmlspecialchars($assetVersion, ENT_QUOTES, 'UTF-8') . '"></script>';
+    }
     
     // Note: originalColumns are used in JavaScript below, created inline from $columns
     ?>

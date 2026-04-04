@@ -224,11 +224,10 @@ $navItems = [
 ];
 ?>
 
-<?php
-// Determine top position based on dashboard header height
-$sidebarTop = 'top-[5rem]'; // 80px for dashboard header with breadcrumb - exact match
-?>
-<aside class="fixed <?= $sidebarTop ?> left-0 w-64 h-[calc(100vh-5rem)] bg-slate-900/50 backdrop-blur-sm border-t border-r border-slate-800/50 flex-shrink-0 z-40 flex flex-col">
+<aside
+    class="fixed left-0 w-64 bg-slate-900/50 backdrop-blur-sm border-t border-r border-slate-800/50 flex-shrink-0 z-40 flex flex-col"
+    style="top: 4rem; bottom: 0;"
+>
     <!-- Navigation - Scrollable -->
     <div class="flex-1 overflow-y-auto p-4 pb-6">
         <nav class="space-y-1">
