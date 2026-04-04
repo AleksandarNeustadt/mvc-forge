@@ -7,6 +7,7 @@ use App\Core\database\Database;
 use App\Core\http\Input;
 use App\Core\logging\Logger;
 use App\Core\mvc\Controller;
+use App\Core\security\Security;
 use App\Core\services\ApiResponseFormatterService;
 use App\Models\ApiToken;
 use App\Models\BlogCategory;
@@ -15,6 +16,7 @@ use App\Models\BlogTag;
 use App\Models\Language;
 use App\Models\NavigationMenu;
 use App\Models\Page;
+use App\Models\Role;
 use App\Models\User;use BadMethodCallException;
 use Closure;
 use DateTime;
@@ -184,13 +186,41 @@ class ApiController extends Controller
             return;
         }
         
-        $this->jsonResponse(true, 'User info', [
-            'id' => $user->id,
-            'username' => $user->username,
-            'email' => $user->email,
-            'first_name' => $user->first_name,
-            'last_name' => $user->last_name
+        $formattedUser = $this->formatUser($user);
+
+        $this->jsonResponse(true, 'User info', array_merge($formattedUser, [
+            'user' => $formattedUser,
+        ]));
+    }
+
+    /**
+     * Register a public API user
+     * POST /api/auth/register
+     */
+    public function register(): void
+    {
+        $data = Input::json();
+        if (empty($data)) {
+            $data = $this->request->post();
+        }
+
+        $validationError = $this->validateUserPayload($data, true);
+        if ($validationError !== null) {
+            $this->jsonResponse(false, $validationError, null, 400);
+            return;
+        }
+
+        $user = User::createUser([
+            'first_name' => Security::sanitize($data['first_name'] ?? '', 'string'),
+            'last_name' => Security::sanitize($data['last_name'] ?? '', 'string'),
+            'username' => Security::sanitize($data['username'] ?? '', 'alphanumeric'),
+            'email' => Security::sanitize($data['email'] ?? '', 'email'),
+            'password' => $data['password'] ?? '',
+            'newsletter' => !empty($data['newsletter']),
+            'status' => 'pending',
         ]);
+
+        $this->jsonResponse(true, 'User registered and pending approval', $this->formatUser($user), 201);
     }
     
     // ========== PAGES ==========
@@ -1213,6 +1243,162 @@ class ApiController extends Controller
         
         $this->jsonResponse(true, 'Language deleted');
     }
+
+    // ========== USERS ==========
+
+    /**
+     * List users
+     * GET /api/users
+     */
+    public function listUsers(): void
+    {
+        $users = User::query()->orderBy('created_at', 'desc')->get();
+
+        $result = [];
+        foreach ($users as $userRow) {
+            $user = new User();
+            $result[] = $this->formatUser($user->newFromBuilder($userRow));
+        }
+
+        $this->jsonResponse(true, 'Users retrieved', $result);
+    }
+
+    /**
+     * Get single user
+     * GET /api/users/{id}
+     */
+    public function getUser(int $id): void
+    {
+        $user = User::find($id);
+        if (!$user) {
+            $this->jsonResponse(false, 'User not found', null, 404);
+            return;
+        }
+
+        $this->jsonResponse(true, 'User retrieved', $this->formatUser($user));
+    }
+
+    /**
+     * Create user
+     * POST /api/users
+     */
+    public function createUser(): void
+    {
+        $data = Input::json() ?? $this->request->post();
+
+        $validationError = $this->validateUserPayload($data, true);
+        if ($validationError !== null) {
+            $this->jsonResponse(false, $validationError, null, 400);
+            return;
+        }
+
+        $user = User::createUser([
+            'first_name' => Security::sanitize($data['first_name'] ?? '', 'string'),
+            'last_name' => Security::sanitize($data['last_name'] ?? '', 'string'),
+            'username' => Security::sanitize($data['username'] ?? '', 'alphanumeric'),
+            'email' => Security::sanitize($data['email'] ?? '', 'email'),
+            'password' => $data['password'] ?? '',
+            'newsletter' => !empty($data['newsletter']),
+            'status' => $data['status'] ?? 'active',
+        ]);
+
+        if (($data['status'] ?? 'active') === 'active' && $user->isPending()) {
+            $user->approve();
+        }
+
+        if (!empty($data['role_ids']) && is_array($data['role_ids'])) {
+            $this->syncUserRoles($user, $data['role_ids']);
+        }
+
+        $this->jsonResponse(true, 'User created', $this->formatUser($user), 201);
+    }
+
+    /**
+     * Update user
+     * PUT /api/users/{id}
+     */
+    public function updateUser(int $id): void
+    {
+        $user = User::find($id);
+        if (!$user) {
+            $this->jsonResponse(false, 'User not found', null, 404);
+            return;
+        }
+
+        $data = Input::json() ?? $this->request->post();
+        $validationError = $this->validateUserPayload($data, false, $id);
+        if ($validationError !== null) {
+            $this->jsonResponse(false, $validationError, null, 400);
+            return;
+        }
+
+        foreach (['first_name', 'last_name', 'username', 'email', 'slug', 'avatar', 'newsletter', 'status'] as $field) {
+            if (!array_key_exists($field, $data)) {
+                continue;
+            }
+
+            $value = $data[$field];
+            if ($field === 'email') {
+                $value = Security::sanitize((string) $value, 'email');
+            } elseif (in_array($field, ['first_name', 'last_name', 'slug'], true)) {
+                $value = Security::sanitize((string) $value, 'string');
+            } elseif ($field === 'username') {
+                $value = Security::sanitize((string) $value, 'alphanumeric');
+            } elseif ($field === 'newsletter') {
+                $value = (bool) $value;
+            }
+
+            $user->$field = $value;
+        }
+
+        if (!empty($data['password'])) {
+            try {
+                $user->updatePassword((string) $data['password']);
+            } catch (Exception $e) {
+                $this->jsonResponse(false, $e->getMessage(), null, 400);
+                return;
+            }
+        } else {
+            $user->save();
+        }
+
+        if (($data['status'] ?? null) === 'active' && $user->isPending()) {
+            $user->approve();
+        } elseif (($data['status'] ?? null) === 'pending') {
+            $user->setPending();
+        } elseif (($data['status'] ?? null) === 'banned') {
+            $user->ban();
+        }
+
+        if (isset($data['role_ids'])) {
+            $this->syncUserRoles($user, is_array($data['role_ids']) ? $data['role_ids'] : []);
+        }
+
+        $this->jsonResponse(true, 'User updated', $this->formatUser(User::find((int) $user->id) ?? $user));
+    }
+
+    /**
+     * Delete user
+     * DELETE /api/users/{id}
+     */
+    public function deleteUser(int $id): void
+    {
+        $user = User::find($id);
+        if (!$user) {
+            $this->jsonResponse(false, 'User not found', null, 404);
+            return;
+        }
+
+        $currentUserId = (int) ($_SESSION['user_id'] ?? 0);
+        if ($currentUserId > 0 && (int) $user->id === $currentUserId) {
+            $this->jsonResponse(false, 'You cannot delete your own user through this endpoint', null, 400);
+            return;
+        }
+
+        $user->delete();
+
+        $this->jsonResponse(true, 'User deleted');
+    }
     
     // ========== FORMATTING HELPERS ==========
     
@@ -1244,6 +1430,69 @@ class ApiController extends Controller
     private function formatLanguage(Language $language): array
     {
         return $this->responseFormatter->formatLanguage($language);
+    }
+
+    private function formatUser(User $user): array
+    {
+        return $this->responseFormatter->formatUser($user);
+    }
+
+    private function validateUserPayload(array $data, bool $passwordRequired, ?int $excludeUserId = null): ?string
+    {
+        $requiredFields = ['first_name', 'last_name', 'username', 'email'];
+        foreach ($requiredFields as $field) {
+            if (empty($data[$field])) {
+                return ucfirst(str_replace('_', ' ', $field)) . ' is required';
+            }
+        }
+
+        if ($passwordRequired && empty($data['password'])) {
+            return 'Password is required';
+        }
+
+        if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+            return 'Valid email is required';
+        }
+
+        if (!preg_match('/^[a-zA-Z0-9]{3,30}$/', (string) $data['username'])) {
+            return 'Username must be 3-30 alphanumeric characters';
+        }
+
+        if (!empty($data['password'])) {
+            $passwordErrors = Security::validatePasswordStrength((string) $data['password'], 8);
+            if (!empty($passwordErrors)) {
+                return $passwordErrors[0];
+            }
+        }
+
+        $existingByEmail = User::findByEmail((string) $data['email']);
+        if ($existingByEmail && ($excludeUserId === null || (int) $existingByEmail->id !== $excludeUserId)) {
+            return 'Email already exists';
+        }
+
+        $existingByUsername = User::findByUsername((string) $data['username']);
+        if ($existingByUsername && ($excludeUserId === null || (int) $existingByUsername->id !== $excludeUserId)) {
+            return 'Username already exists';
+        }
+
+        if (!empty($data['slug']) && User::slugExists((string) $data['slug'], $excludeUserId)) {
+            return 'Slug already exists';
+        }
+
+        return null;
+    }
+
+    private function syncUserRoles(User $user, array $roleIds): void
+    {
+        $validRoleIds = [];
+        foreach ($roleIds as $roleId) {
+            $role = Role::find((int) $roleId);
+            if ($role) {
+                $validRoleIds[] = (int) $role->id;
+            }
+        }
+
+        $user->syncRoles(array_values(array_unique($validRoleIds)));
     }
     
     /**

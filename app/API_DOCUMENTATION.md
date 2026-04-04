@@ -1,30 +1,30 @@
-# API Dokumentacija
+# API Documentation
 
-API omogućava pristup sadržaju (pages, menus, posts, categories, tags, languages) preko token autentifikacije.
+The MVC Forge API provides token-based access to authentication, users, pages, menus, blog posts, categories, tags, and languages.
 
-## Važno - API URL-ovi
+## API URLs
 
-API rute **ne zahtevaju jezik prefix** u URL-u. Možete pristupiti API-ju na dva načina:
+API routes **do not require a language prefix**, but both styles are supported:
 
-1. **Direktno (preporučeno):** `https://aleksandar.pro/api/auth/login`
-2. **Sa jezikom (takođe radi):** `https://aleksandar.pro/de/api/auth/login` ili `https://aleksandar.pro/sr/api/auth/login`
+1. **Recommended:** `https://your-domain.com/api/auth/login`
+2. **Also supported:** `https://your-domain.com/en/api/auth/login` or `https://your-domain.com/sr/api/auth/login`
 
-Ruter automatski detektuje API rute i preskače jezik prefix, tako da oba pristupa rade identično.
+The router detects API requests and bypasses the language segment automatically.
 
-## Autentifikacija
+## Authentication
 
 ### Login
 **POST** `/api/auth/login`
 
-Dobija API token koristeći username/password.
+Issue an API token with username/email and password credentials.
 
 **Request Body:**
 ```json
 {
   "username": "your_username",
   "password": "your_password",
-  "token_name": "My API Token",  // opciono
-  "expires_in": 3600  // opciono, sekundi (null = nikad ne ističe)
+  "token_name": "My API Token",
+  "expires_in": 3600
 }
 ```
 
@@ -47,10 +47,45 @@ Dobija API token koristeći username/password.
 }
 ```
 
+### Register
+**POST** `/api/auth/register`
+
+Create a public user account. Newly registered users are created with `pending` status and must be approved before they can log in.
+
+**Request Body:**
+```json
+{
+  "first_name": "John",
+  "last_name": "Doe",
+  "username": "johndoe",
+  "email": "john@example.com",
+  "password": "StrongPass123!",
+  "newsletter": true
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "User registered and pending approval",
+  "data": {
+    "id": 2,
+    "username": "johndoe",
+    "email": "john@example.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "slug": "johndoe",
+    "status": "pending",
+    "roles": []
+  }
+}
+```
+
 ### Logout
 **POST** `/api/auth/logout`
 
-Poništava (revoke) trenutni API token.
+Revoke the current API token.
 
 **Headers:**
 ```
@@ -60,12 +95,86 @@ Authorization: Bearer YOUR_TOKEN
 ### Get Current User
 **GET** `/api/auth/me`
 
-Dobija informacije o trenutno autentifikovanom korisniku.
+Return the authenticated user profile.
 
 **Headers:**
 ```
 Authorization: Bearer YOUR_TOKEN
 ```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "User info",
+  "data": {
+    "id": 1,
+    "username": "admin",
+    "email": "admin@example.com",
+    "first_name": "Admin",
+    "last_name": "User",
+    "status": "active",
+    "roles": [
+      {
+        "id": 1,
+        "name": "Super Admin",
+        "slug": "super-admin"
+      }
+    ],
+    "user": {
+      "id": 1,
+      "username": "admin",
+      "email": "admin@example.com"
+    }
+  }
+}
+```
+
+## Users
+
+All user management endpoints require `Authorization: Bearer YOUR_TOKEN`.
+
+### List Users
+**GET** `/api/users`
+
+### Get User
+**GET** `/api/users/{id}`
+
+### Create User
+**POST** `/api/users`
+
+**Request Body:**
+```json
+{
+  "first_name": "Jane",
+  "last_name": "Editor",
+  "username": "janeeditor",
+  "email": "jane@example.com",
+  "password": "StrongPass123!",
+  "status": "active",
+  "newsletter": false,
+  "role_ids": [2, 3]
+}
+```
+
+### Update User
+**PUT** `/api/users/{id}`
+
+**Request Body:**
+```json
+{
+  "first_name": "Jane",
+  "last_name": "Editor",
+  "username": "janeeditor",
+  "email": "jane@example.com",
+  "status": "active",
+  "newsletter": true,
+  "role_ids": [3]
+}
+```
+
+### Delete User
+**DELETE** `/api/users/{id}`
 
 ## Pages (Stranice)
 

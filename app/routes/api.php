@@ -9,6 +9,7 @@ use App\Controllers\ApiMenuController;
 use App\Controllers\ApiPageController;
 use App\Controllers\ApiPostController;
 use App\Controllers\ApiTagController;
+use App\Controllers\ApiUserController;
 
 // CORS middleware for API
 // Rate limiting: 1000 requests per 60 seconds for authenticated API users (generous limit for bulk operations)
@@ -19,6 +20,9 @@ Route::prefix('api')->middleware(['cors', new RateLimitMiddleware(1000, 60)])->g
     Route::post('/auth/login', [ApiAuthController::class, 'login'])
         ->middleware([new RateLimitMiddleware(10, 60)])
         ->name('api.auth.login');
+    Route::post('/auth/register', [ApiAuthController::class, 'register'])
+        ->middleware([new RateLimitMiddleware(10, 300)])
+        ->name('api.auth.register');
     Route::post('/auth/logout', [ApiAuthController::class, 'logout'])
         ->middleware([new ApiAuthMiddleware()])
         ->name('api.auth.logout');
@@ -28,6 +32,19 @@ Route::prefix('api')->middleware(['cors', new RateLimitMiddleware(1000, 60)])->g
         
         // User info
         Route::get('/auth/me', [ApiAuthController::class, 'me'])->name('api.auth.me');
+
+        // ========== Users ==========
+        Route::get('/users', [ApiUserController::class, 'listUsers'])->name('api.users.list');
+        Route::get('/users/{id}', [ApiUserController::class, 'getUser'])
+            ->where(['id' => '[0-9]+'])
+            ->name('api.users.get');
+        Route::post('/users', [ApiUserController::class, 'createUser'])->name('api.users.create');
+        Route::put('/users/{id}', [ApiUserController::class, 'updateUser'])
+            ->where(['id' => '[0-9]+'])
+            ->name('api.users.update');
+        Route::delete('/users/{id}', [ApiUserController::class, 'deleteUser'])
+            ->where(['id' => '[0-9]+'])
+            ->name('api.users.delete');
         
         // ========== Pages ==========
         Route::get('/pages', [ApiPageController::class, 'listPages'])->name('api.pages.list');

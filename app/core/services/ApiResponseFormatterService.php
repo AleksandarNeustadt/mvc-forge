@@ -185,6 +185,38 @@ class ApiResponseFormatterService
         ];
     }
 
+    public function formatUser(User $user): array
+    {
+        $roles = array_map(
+            static fn($role): array => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'slug' => $role->slug,
+            ],
+            $user->roles()
+        );
+
+        return [
+            'id' => $user->id,
+            'username' => $user->username,
+            'email' => $user->email,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'slug' => $user->slug,
+            'avatar' => $user->avatar,
+            'newsletter' => (bool) ($user->newsletter ?? false),
+            'status' => $user->status,
+            'email_verified_at' => $user->email_verified_at,
+            'last_login_at' => $user->last_login_at,
+            'last_login_ip' => $user->last_login_ip,
+            'approved_at' => $user->approved_at,
+            'banned_at' => $user->banned_at,
+            'roles' => $roles,
+            'created_at' => $user->created_at,
+            'updated_at' => $user->updated_at,
+        ];
+    }
+
     private function formatLanguageSummary(?Language $language): ?array
     {
         return $language ? [
