@@ -14,6 +14,8 @@ This guide is written for the scenario: *"I installed MVC Forge on a domain and 
   - **Languages** for localized variants.
 - API routes work without a language prefix, for example `https://example.com/api/pages`.
 - Full endpoint documentation is available in [app/API_DOCUMENTATION.md](../app/API_DOCUMENTATION.md).
+- Translation linking is handled with `translation_group_id`. Localized variants of the same page/post/category/tag should reuse the same group ID.
+- Featured images can be uploaded with `POST /api/posts/{id}/featured-image` using `multipart/form-data`.
 
 ## Required Workflow Before Content Changes
 
@@ -29,6 +31,8 @@ Before the AI starts creating content, it should follow this order:
    - `GET /api/tags?language_code=sr`
    - `GET /api/menus?language_code=sr`
 5. Only then create or update content.
+6. If you create translated variants, copy `translation_group_id` from the source item into the translated item.
+7. If a post needs a local image, create/update the post first, then upload the file to `/api/posts/{id}/featured-image`.
 
 ## SEO Rules For AI-Generated Content
 
@@ -60,8 +64,9 @@ Task:
 3. Check whether the requested content already exists, so you do not create duplicates.
 4. Create a new page or blog post with SEO-friendly title, slug, route, meta_title, meta_description, and HTML content.
 5. If categories or tags are needed, create them before creating the post.
-6. If the content should appear in navigation, create or update a menu record.
-7. At the end, return a short report with created resources, IDs, public URLs, and anything left in draft status.
+6. If the content should appear in navigation, assign `navbar_id`, `is_in_menu`, and `menu_order` on the page, and create the menu container first if needed.
+7. If this is a translation, reuse the source record's `translation_group_id`.
+8. At the end, return a short report with created resources, IDs, public URLs, and anything left in draft status.
 
 Content brief:
 - Language: sr
@@ -126,6 +131,11 @@ curl -s "$BASE_URL/languages" \
 curl -s "$BASE_URL/pages?language_code=sr" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Accept: application/json"
+
+curl -s -X POST "$BASE_URL/posts/123/featured-image" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/json" \
+  -F "file=@/absolute/path/to/image.jpg"
 ```
 
 ## When AI Should Not Publish Directly
@@ -146,3 +156,10 @@ For these cases, it is safer for the AI to prepare a draft first and publish onl
 5. Let the AI create draft content through the API.
 6. Review it in the admin panel.
 7. Only then let the AI switch `status` to `published` or change menu placement.
+
+## Current API Limitations
+
+- There is no API yet for role/permission CRUD, only user role assignment via `role_ids`.
+- Menu item ordering is controlled through page fields (`navbar_id`, `is_in_menu`, `menu_order`); there is no dedicated nested menu-item API.
+- Global site settings (`BRAND_NAME`, `BRAND_TAGLINE`, `SITE_LANGUAGE_MODE`) are managed through `.env` and install/deploy commands, not through API.
+- Media upload is available for blog featured images, but there is no generic media library listing/deletion API yet.

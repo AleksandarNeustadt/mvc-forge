@@ -2,6 +2,24 @@
 
 The MVC Forge API provides token-based access to authentication, users, pages, menus, blog posts, categories, tags, and languages.
 
+## Current API Coverage
+
+Supported now:
+- authentication and bearer tokens
+- user CRUD and role assignment by `role_ids`
+- page/menu/post/category/tag/language CRUD
+- bulk blog post creation
+- featured image upload for posts
+- multilingual filtering via `language_code` / `language_id`
+- translation linking via `translation_group_id`
+
+Not exposed yet through API:
+- role CRUD and permission matrix management
+- navigation menu item tree editing beyond assigning pages to `navbar_id`
+- global site settings such as `BRAND_NAME`, `BRAND_TAGLINE`, and `SITE_LANGUAGE_MODE`
+- media library listing/deletion
+- public asset build/deploy actions (`npm run build`, cache purge, migrations)
+
 ## API URLs
 
 API routes **do not require a language prefix**, but both styles are supported:
@@ -178,6 +196,14 @@ All user management endpoints require `Authorization: Bearer YOUR_TOKEN`.
 
 ## Pages (Stranice)
 
+### Multilingual and translation rules
+
+- Use `language_code` or `language_id` when creating or updating localized content.
+- `slug` and `route` must be unique inside the same language, but the same slug/route may exist in another language.
+- Use the same `translation_group_id` on translated variants of the same page/post/category/tag so the public language switcher can open the matching translation.
+- If `translation_group_id` is omitted, the API generates one automatically for that record.
+- To add a translation later, first read the source record, copy its `translation_group_id`, and send that value in the translated create/update request.
+
 ### List Pages
 **GET** `/api/pages?language_code=sr`
 
@@ -227,6 +253,12 @@ Authorization: Bearer YOUR_TOKEN
 ### Create Page
 **POST** `/api/pages`
 
+Useful fields:
+- `language_code` or `language_id`
+- `translation_group_id`
+- `meta_title`, `meta_description`, `meta_keywords`
+- `navbar_id`, `is_in_menu`, `menu_order`, `parent_page_id`
+
 **Request Body:**
 ```json
 {
@@ -267,6 +299,8 @@ Authorization: Bearer YOUR_TOKEN
 
 ## Menus (Navigacioni meniji)
 
+Important: this API manages menu containers (`navigation_menus`). Menu items themselves are pages assigned with `navbar_id`, `is_in_menu=true`, and `menu_order`.
+
 ### List Menus
 **GET** `/api/menus?language_code=sr`
 
@@ -304,6 +338,13 @@ Authorization: Bearer YOUR_TOKEN
 ### Create Post
 **POST** `/api/posts`
 
+Useful fields:
+- `language_code` or `language_id`
+- `translation_group_id`
+- `category_ids`, `tag_ids`
+- `featured_image`
+- `status`, `published_at`, `meta_title`, `meta_description`, `meta_keywords`
+
 **Request Body:**
 ```json
 {
@@ -325,6 +366,66 @@ Authorization: Bearer YOUR_TOKEN
 ### Update Post
 **PUT** `/api/posts/{id}`
 
+### Bulk Create Posts
+**POST** `/api/posts/bulk`
+
+Creates multiple posts in one request. Existing categories/tags are reused by slug + language; missing categories/tags are auto-created.
+
+**Request Body:**
+```json
+{
+  "posts": [
+    {
+      "title": "Serbian Post",
+      "slug": "serbian-post",
+      "excerpt": "Short intro",
+      "content": "<p>HTML content</p>",
+      "language_code": "sr",
+      "status": "draft",
+      "categories": ["Vesti"],
+      "tags": ["forgeng", "webgpu"],
+      "translation_group_id": "blog-post-shared-id",
+      "category_translation_group_id": "blog-category-vesti",
+      "tag_translation_group_id": "blog-tag-webgpu"
+    },
+    {
+      "title": "German Post",
+      "slug": "serbian-post",
+      "excerpt": "Kurzer Einstieg",
+      "content": "<p>HTML Inhalt</p>",
+      "language_code": "de",
+      "status": "draft",
+      "categories": ["Vesti"],
+      "tags": ["forgeng", "webgpu"],
+      "translation_group_id": "blog-post-shared-id",
+      "category_translation_group_id": "blog-category-vesti",
+      "tag_translation_group_id": "blog-tag-webgpu"
+    }
+  ]
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Bulk operation completed",
+  "data": {
+    "created": [
+      {
+        "id": 10,
+        "title": "Serbian Post",
+        "slug": "serbian-post",
+        "translation_group_id": "blog-post-shared-id"
+      }
+    ],
+    "created_count": 1,
+    "errors": [],
+    "error_count": 0
+  }
+}
+```
+
 ### Upload Featured Image
 **POST** `/api/posts/{id}/featured-image`
 
@@ -337,6 +438,14 @@ Authorization: Bearer YOUR_TOKEN
 
 **Body (multipart/form-data):**
 - `file` - image fajl (`jpg`, `png`, `gif`, `webp`, max 5MB)
+
+**cURL Example:**
+```bash
+curl -X POST "https://forgeng.dev/api/posts/12/featured-image" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/json" \
+  -F "file=@/absolute/path/to/image.jpg"
+```
 
 **Response:**
 ```json
@@ -371,6 +480,12 @@ Authorization: Bearer YOUR_TOKEN
 ### Create Category
 **POST** `/api/categories`
 
+Useful fields:
+- `language_code` or `language_id`
+- `translation_group_id`
+- `parent_id`, `sort_order`, `image`
+- `meta_title`, `meta_description`
+
 **Request Body:**
 ```json
 {
@@ -399,6 +514,11 @@ Authorization: Bearer YOUR_TOKEN
 
 ### Create Tag
 **POST** `/api/tags`
+
+Useful fields:
+- `language_code` or `language_id`
+- `translation_group_id`
+- `description`
 
 **Request Body:**
 ```json
@@ -431,6 +551,11 @@ Primer: `/api/languages/code/sr`
 
 ### Create Language
 **POST** `/api/languages`
+
+Useful fields:
+- `code`, `name`, `native_name`, `flag`
+- `is_active`, `is_default`, `is_site_language`
+- `sort_order`, `country_code`, `region_id`, `continent_id`
 
 **Request Body:**
 ```json
@@ -577,4 +702,7 @@ Svi errori vraćaju sledeći format:
 3. Jezik se može specificirati kroz `language_code` parametar (npr. "sr", "en", "nl")
 4. Za filter po jeziku, koristite `?language_code=XX` query parametar
 5. Tokovi ne ističu po defaultu, ali možete postaviti `expires_in` pri login-u
+6. Za objavljene blog postove koristite `status=published` i `published_at` kao Unix timestamp
+7. Za prevedene varijante istog sadržaja uvek prosledite isti `translation_group_id`
+8. API trenutno ne može da izvrši frontend build, migracije ili Cloudflare purge; to se radi deploy komandama van API-ja
 
