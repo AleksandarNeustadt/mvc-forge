@@ -9,6 +9,7 @@ use App\Core\logging\Logger;
 use App\Core\mvc\Controller;
 use App\Core\security\Security;
 use App\Core\services\ApiResponseFormatterService;
+use App\Core\services\DashboardMediaService;
 use App\Models\ApiToken;
 use App\Models\BlogCategory;
 use App\Models\BlogPost;
@@ -47,12 +48,16 @@ use stdClass;
 class ApiController extends Controller
 {
     private ApiResponseFormatterService $responseFormatter;
+    private DashboardMediaService $mediaService;
 
-    public function __construct(?ApiResponseFormatterService $responseFormatter = null)
-    {
+    public function __construct(
+        ?ApiResponseFormatterService $responseFormatter = null,
+        ?DashboardMediaService $mediaService = null
+    ) {
         parent::__construct();
 
         $this->responseFormatter = $responseFormatter ?? new ApiResponseFormatterService();
+        $this->mediaService = $mediaService ?? new DashboardMediaService();
     }
 
     private function resolveLanguageIdFromPayload(array $data, ?int $currentLanguageId = null): ?int
@@ -783,6 +788,39 @@ class ApiController extends Controller
         }
         
         $this->jsonResponse(true, 'Post updated', $this->formatPost($post));
+    }
+
+    /**
+     * Upload and assign a featured image to a post
+     * POST /api/posts/{id}/featured-image
+     */
+    public function uploadPostFeaturedImage(int $id): void
+    {
+        $post = BlogPost::find($id);
+
+        if (!$post) {
+            $this->jsonResponse(false, 'Post not found', null, 404);
+            return;
+        }
+
+        $result = $this->mediaService->uploadFeaturedImage('file');
+        if (empty($result['ok'])) {
+            $this->jsonResponse(
+                false,
+                $result['error'] ?? 'Upload failed',
+                ['errors' => $result['errors'] ?? []],
+                $result['status'] ?? 400
+            );
+            return;
+        }
+
+        $post->featured_image = $result['payload']['url'] ?? null;
+        $post->save();
+
+        $this->jsonResponse(true, 'Featured image uploaded', [
+            'image' => $result['payload'],
+            'post' => $this->formatPost($post),
+        ], 201);
     }
     
     /**

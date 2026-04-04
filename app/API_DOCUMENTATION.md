@@ -325,6 +325,38 @@ Authorization: Bearer YOUR_TOKEN
 ### Update Post
 **PUT** `/api/posts/{id}`
 
+### Upload Featured Image
+**POST** `/api/posts/{id}/featured-image`
+
+Uploaduje sliku i odmah je upisuje u `featured_image` za dati post.
+
+**Headers:**
+```
+Authorization: Bearer YOUR_TOKEN
+```
+
+**Body (multipart/form-data):**
+- `file` - image fajl (`jpg`, `png`, `gif`, `webp`, max 5MB)
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Featured image uploaded",
+  "data": {
+    "image": {
+      "url": "/storage/uploads/blog/featured_example.jpg",
+      "filename": "featured_example.jpg"
+    },
+    "post": {
+      "id": 12,
+      "title": "My Blog Post",
+      "featured_image": "/storage/uploads/blog/featured_example.jpg"
+    }
+  }
+}
+```
+
 ### Delete Post
 **DELETE** `/api/posts/{id}`
 

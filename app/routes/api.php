@@ -79,6 +79,9 @@ Route::prefix('api')->middleware(['cors', new RateLimitMiddleware(1000, 60)])->g
             ->name('api.posts.get');
         Route::post('/posts', [ApiPostController::class, 'createPost'])->name('api.posts.create');
         Route::post('/posts/bulk', [ApiPostController::class, 'bulkCreatePosts'])->name('api.posts.bulk');
+        Route::post('/posts/{id}/featured-image', [ApiPostController::class, 'uploadPostFeaturedImage'])
+            ->where(['id' => '[0-9]+'])
+            ->name('api.posts.featured-image');
         Route::put('/posts/{id}', [ApiPostController::class, 'updatePost'])
             ->where(['id' => '[0-9]+'])
             ->name('api.posts.update');
