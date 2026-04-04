@@ -1,115 +1,115 @@
 # AI Content Workflow
 
-Ovaj vodič je namenjen baš scenariju: *"Instalirao sam MVC Forge na domen, sada želim da AI agent napravi sadržaj, SEO strukturu i objavi ga kroz postojeći API/admin model."*
+This guide is written for the scenario: *"I installed MVC Forge on a domain and now I want an AI agent to create content, SEO structure, and publish it through the existing API/admin model."*
 
-## Šta AI treba da zna o MVC Forge sajtu
+## What The AI Should Know About MVC Forge
 
-- Backend je PHP MVC/CMS aplikacija sa API rutama pod `/api/*`.
-- API autentifikacija ide preko `POST /api/auth/login`, a zatim svaki zahtev koristi `Authorization: Bearer <TOKEN>`.
-- Sadržaj se najčešće modeluje kroz:
-  - **Pages** za statične i landing stranice,
-  - **Posts** za blog/projekat članke,
-  - **Categories** i **Tags** za blog taksonomiju,
-  - **Menus** za navigacione strukture,
-  - **Languages** za lokalizovane varijante.
-- API rute rade bez jezičkog prefiksa, npr. `https://example.com/api/pages`.
-- Detaljna tehnička specifikacija endpoint-a je u [app/API_DOCUMENTATION.md](../app/API_DOCUMENTATION.md).
+- The backend is a PHP MVC/CMS application with API routes under `/api/*`.
+- API authentication starts with `POST /api/auth/login`, then every protected request must send `Authorization: Bearer <TOKEN>`.
+- Content is usually modeled through:
+  - **Pages** for static pages and landing pages,
+  - **Posts** for blog/project articles,
+  - **Categories** and **Tags** for blog taxonomy,
+  - **Menus** for navigation structures,
+  - **Languages** for localized variants.
+- API routes work without a language prefix, for example `https://example.com/api/pages`.
+- Full endpoint documentation is available in [app/API_DOCUMENTATION.md](../app/API_DOCUMENTATION.md).
 
-## Pravilo pre rada
+## Required Workflow Before Content Changes
 
-Pre nego što AI krene da kreira sadržaj, treba da uradi ovaj redosled:
+Before the AI starts creating content, it should follow this order:
 
-1. Prijavi se na API preko `POST /api/auth/login`.
-2. Sačuva token iz `data.token`.
-3. Učita postojeće jezike preko `GET /api/languages`.
-4. Učita postojeće stranice, kategorije, tagove i menije da ne pravi duplikate:
+1. Log in through `POST /api/auth/login`.
+2. Save the token from `data.token`.
+3. Load existing languages with `GET /api/languages`.
+4. Load existing pages, categories, tags, and menus to avoid duplicates:
    - `GET /api/pages?language_code=sr`
    - `GET /api/posts?language_code=sr`
    - `GET /api/categories?language_code=sr`
    - `GET /api/tags?language_code=sr`
    - `GET /api/menus?language_code=sr`
-5. Tek onda kreira ili ažurira sadržaj.
+5. Only then create or update content.
 
-## SEO pravila za AI generisanje sadržaja
+## SEO Rules For AI-Generated Content
 
-Za svaki page ili post, AI treba da poštuje ova pravila:
+For each page or post, the AI should follow these rules:
 
-- `title` treba da bude prirodan i jasan, sa glavnom ključnom frazom.
-- `slug` treba da bude kratak, čitljiv, lowercase i bez nepotrebnih reči.
-- `route` za strane treba da bude stabilan i semantičan, npr. `/seo-usluge`, `/o-nama`, `/kontakt`.
-- `meta_title` treba da bude SEO fokusiran, ali ne spammy.
-- `meta_description` treba da jasno objasni sadržaj i razlog za klik.
-- `excerpt` kod blog posta treba da bude kratak uvod koji može da se koristi i u listing karticama.
-- `content` treba da bude validan HTML, sa jasnom strukturom `h2`, `h3`, paragrafima, listama i internim linkovima gde ima smisla.
-- Ako postoji više jezika, prvo napravi osnovnu verziju na primarnom jeziku, pa tek onda lokalizacije.
-- Ne objavljuj `status=published` dok tekst nije logički završen i SEO polja nisu popunjena.
+- `title` should be natural, clear, and include the main search phrase.
+- `slug` should be short, readable, lowercase, and free of unnecessary words.
+- `route` for pages should be stable and semantic, for example `/seo-services`, `/about`, `/contact`.
+- `meta_title` should be SEO-focused but not spammy.
+- `meta_description` should clearly explain the page content and why someone should click.
+- `excerpt` for blog posts should be a short intro that can also work in listing cards.
+- `content` should be valid HTML with a clear `h2` / `h3` structure, paragraphs, lists, and internal links where useful.
+- If multiple languages exist, create the primary-language version first, then localized variants.
+- Do not publish with `status=published` until the content is logically complete and SEO fields are filled.
 
-## Predloženi prompt za AI agenta
+## Suggested Prompt For An AI Agent
 
-Ovaj prompt možeš direktno kopirati i prilagoditi:
+You can copy and adapt this prompt:
 
 ```text
-Ti si content i SEO agent za MVC Forge sajt.
+You are a content and SEO agent for a website powered by MVC Forge.
 
-API dokumentacija je u app/API_DOCUMENTATION.md, a domen je https://forgeng.dev.
-Koristi postojeći API, nemoj menjati PHP kod osim ako to eksplicitno tražim.
+API documentation is in app/API_DOCUMENTATION.md, and the domain is https://forgeng.dev.
+Use the existing API and do not modify PHP code unless explicitly requested.
 
-Zadatak:
-1. Prijavi se na /api/auth/login pomoću admin naloga koji ću ti dati.
-2. Učitaj postojeće jezike, stranice, blog kategorije, tagove i menije.
-3. Proveri da li sadržaj koji tražim već postoji, da ne napraviš duplikat.
-4. Napravi novu stranicu ili blog post sa SEO-friendly title, slug, route, meta_title, meta_description i HTML sadržajem.
-5. Ako su potrebne kategorije ili tagovi, napravi ih pre kreiranja posta.
-6. Ako sadržaj treba da bude u meniju, napravi ili ažuriraj menu zapis.
-7. Na kraju mi vrati kratak izveštaj: šta je kreirano, koji su ID-jevi, koji su javni URL-ovi, i šta je ostalo u draft statusu.
+Task:
+1. Log in to /api/auth/login with the admin account I provide.
+2. Load existing languages, pages, blog categories, tags, and menus.
+3. Check whether the requested content already exists, so you do not create duplicates.
+4. Create a new page or blog post with SEO-friendly title, slug, route, meta_title, meta_description, and HTML content.
+5. If categories or tags are needed, create them before creating the post.
+6. If the content should appear in navigation, create or update a menu record.
+7. At the end, return a short report with created resources, IDs, public URLs, and anything left in draft status.
 
 Content brief:
-- Jezik: sr
-- Tip sadržaja: [page|post]
-- Tema:
-- Ciljna ključna fraza:
-- Stil tona:
+- Language: sr
+- Content type: [page|post]
+- Topic:
+- Target search phrase:
+- Tone of voice:
 - Status: [draft|published]
-- Posebni zahtevi:
+- Special requirements:
 
-Nemoj izmišljati endpoint-e. Ako neki endpoint ili polje nije jasno iz dokumentacije, prvo mi reci šta nedostaje.
+Do not invent endpoints. If an endpoint or field is unclear from the documentation, tell me what is missing before proceeding.
 ```
 
-## Primer prompta za landing stranicu
+## Example Prompt For A Landing Page
 
 ```text
-Koristeći MVC Forge API na https://forgeng.dev, napravi novu SEO landing stranicu na srpskom jeziku za uslugu "izrada web aplikacija".
+Using the MVC Forge API on https://forgeng.dev, create a new SEO landing page in Serbian for the service "custom web application development".
 
-Zahtevi:
+Requirements:
 - route: /izrada-web-aplikacija
-- primarna ključna fraza: izrada web aplikacija
-- ton: profesionalan, jasan, bez praznog marketing teksta
-- sadržaj treba da ima hero uvod, 3 glavne sekcije, FAQ sekciju i CTA ka kontakt strani
-- popuni title, slug, meta_title i meta_description
-- stranicu objavi kao aktivnu, ali nemoj je dodavati u meni dok ne pregledam
+- primary search phrase: izrada web aplikacija
+- tone: professional, clear, no empty marketing filler
+- content should include a hero intro, 3 main sections, an FAQ section, and a CTA linking to the contact page
+- fill title, slug, meta_title, and meta_description
+- publish the page as active, but do not add it to the menu until I review it
 
-Pre kreiranja proveri da li već postoji page sa istim route ili slug.
-Na kraju vrati page ID i javni URL.
+Before creating it, check whether a page with the same route or slug already exists.
+At the end, return the page ID and public URL.
 ```
 
-## Primer prompta za blog post
+## Example Prompt For A Blog Post
 
 ```text
-Koristeći MVC Forge API na https://forgeng.dev, napravi blog post na srpskom jeziku o temi "Kako izabrati PHP MVC framework za SEO orijentisan sajt".
+Using the MVC Forge API on https://forgeng.dev, create a Serbian blog post on the topic "How to choose a PHP MVC framework for an SEO-oriented website".
 
-Zahtevi:
-- status neka prvo bude draft
-- napravi ili iskoristi kategoriju "Web development"
-- dodaj tagove "PHP", "MVC", "SEO", "CMS"
-- napiši SEO-friendly title, slug, excerpt, meta_title, meta_description i HTML content
-- content treba da ima uvod, poređenje kriterijuma, praktične preporuke i zaključak
-- nemoj preterivati sa keyword stuffing-om
+Requirements:
+- keep status as draft first
+- create or reuse the category "Web development"
+- add tags "PHP", "MVC", "SEO", "CMS"
+- write SEO-friendly title, slug, excerpt, meta_title, meta_description, and HTML content
+- content should include an intro, comparison criteria, practical recommendations, and a conclusion
+- avoid keyword stuffing
 
-Pre pisanja učitaj postojeće kategorije i tagove da izbegneš duplikate.
-Na kraju vrati post ID, slug, kategorije i tagove koje si koristio.
+Before writing, load existing categories and tags to avoid duplicates.
+At the end, return the post ID, slug, categories, and tags you used.
 ```
 
-## Minimalni API primer za AI agenta
+## Minimal API Example For An AI Agent
 
 ```bash
 BASE_URL="https://forgeng.dev/api"
@@ -128,21 +128,21 @@ curl -s "$BASE_URL/pages?language_code=sr" \
   -H "Accept: application/json"
 ```
 
-## Kada AI ne treba direktno da objavljuje
+## When AI Should Not Publish Directly
 
-Za sledeće slučajeve bolje je da AI prvo pripremi nacrt, a da objava ide tek posle ručne provere:
+For these cases, it is safer for the AI to prepare a draft first and publish only after manual review:
 
-- homepage i glavne prodajne landing stranice,
-- pravni tekstovi, politika privatnosti, uslovi korišćenja,
-- visoko osetljiv SEO sadržaj gde ne želiš slučajan duplikat ruta/slova/slugova,
-- sadržaj koji menja postojeću navigaciju ili URL strukturu.
+- homepage and main commercial landing pages,
+- legal content, privacy policy, terms of service,
+- highly sensitive SEO content where route/slug duplication would be costly,
+- content that changes existing navigation or URL structure.
 
-## Predlog operativnog workflow-a
+## Recommended Operating Workflow
 
-1. Ti AI-ju daš ovaj vodič + API dokumentaciju + content brief.
-2. AI prvo uradi inventar postojećeg sadržaja.
-3. AI predloži strukturu novih stranica/postova.
-4. Ti potvrdiš.
-5. AI kreira draft sadržaj kroz API.
-6. Ti proveriš u admin panelu.
-7. AI tek onda ažurira `status` u `published` ili menja menu pozicije.
+1. Give the AI this guide, API documentation, and a content brief.
+2. Let the AI inventory existing content first.
+3. Ask the AI to propose the structure of new pages/posts.
+4. Approve the proposal.
+5. Let the AI create draft content through the API.
+6. Review it in the admin panel.
+7. Only then let the AI switch `status` to `published` or change menu placement.
