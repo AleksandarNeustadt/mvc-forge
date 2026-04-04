@@ -81,7 +81,7 @@
     // Build canonical URL
     global $router;
     $currentLang = $router->lang ?? 'sr';
-    $canonicalUrl = $siteOrigin . '/' . $currentLang . ($router->getUri() !== '/' ? $router->getUri() : '');
+    $canonicalUrl = $siteOrigin . localized_path($router->getUri() ?? '/', $currentLang);
     ?>
     
     <title><?= $pageTitle ?></title>
@@ -148,7 +148,7 @@
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16">
                     <div class="flex items-center">
-                        <a href="/<?= $currentLang ?>" class="flex items-center space-x-3 group">
+                        <a href="<?= htmlspecialchars(localized_path('/', $currentLang)) ?>" class="flex items-center space-x-3 group">
                             <div class="w-10 h-10 bg-gradient-to-br from-indigo-600 to-violet-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:scale-110 transition-transform">
                                 <ion-icon name="code-working" class="text-2xl text-white"></ion-icon>
                             </div>
@@ -167,12 +167,13 @@
                             if ($primaryMenu && !empty($primaryMenu['items'])) {
                                 foreach ($primaryMenu['items'] as $item) {
                                     $activeClass = ($router->getUri() === $item['url']) ? 'text-indigo-400' : 'text-slate-300 hover:text-white';
-                                    echo '<a href="/' . $currentLang . $item['url'] . '" class="text-sm font-medium transition-colors ' . $activeClass . '">' . htmlspecialchars($item['title']) . '</a>';
+                                    echo '<a href="' . htmlspecialchars(localized_path($item['url'], $currentLang)) . '" class="text-sm font-medium transition-colors ' . $activeClass . '">' . htmlspecialchars($item['title']) . '</a>';
                                 }
                             }
                         }
                         ?>
                         
+                        <?php if (site_is_multilingual()): ?>
                         <!-- Language Switcher -->
                         <div class="relative group">
                             <button class="flex items-center space-x-2 text-sm font-medium text-slate-300 hover:text-white transition-colors py-2">
@@ -196,7 +197,7 @@
                                             foreach ($languages as $l) {
                                                 if (in_array($l->code, $codes)) {
                                                     $activeClass = ($currentLang === $l->code) ? 'bg-indigo-500/10 text-indigo-400' : 'text-slate-300 hover:bg-slate-800 hover:text-white';
-                                                    echo '<a href="/' . $l->code . $router->getUri() . '" class="flex items-center space-x-3 px-4 py-2.5 text-sm transition-colors ' . $activeClass . '">';
+                                                    echo '<a href="' . htmlspecialchars(translated_content_path($l->code, $router->getUri() ?? '/', $currentLang)) . '" class="flex items-center space-x-3 px-4 py-2.5 text-sm transition-colors ' . $activeClass . '">';
                                                     echo '<span class="fi fi-' . get_flag_code($l->code) . ' rounded-sm"></span>';
                                                     echo '<span>' . htmlspecialchars($l->name) . '</span>';
                                                     if ($currentLang === $l->code) {
@@ -211,6 +212,7 @@
                                 </div>
                             </div>
                         </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Mobile menu button -->
@@ -229,11 +231,12 @@
                     if (isset($primaryMenu) && !empty($primaryMenu['items'])) {
                         foreach ($primaryMenu['items'] as $item) {
                             $activeClass = ($router->getUri() === $item['url']) ? 'bg-indigo-500/10 text-indigo-400' : 'text-slate-300 hover:bg-slate-800 hover:text-white';
-                            echo '<a href="/' . $currentLang . $item['url'] . '" class="block px-3 py-2 rounded-lg text-base font-medium ' . $activeClass . '">' . htmlspecialchars($item['title']) . '</a>';
+                            echo '<a href="' . htmlspecialchars(localized_path($item['url'], $currentLang)) . '" class="block px-3 py-2 rounded-lg text-base font-medium ' . $activeClass . '">' . htmlspecialchars($item['title']) . '</a>';
                         }
                     }
                     ?>
                 </div>
+                <?php if (site_is_multilingual()): ?>
                 <div class="pt-4 pb-3 border-t border-slate-800">
                     <div class="px-4 flex items-center">
                         <div class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -246,7 +249,7 @@
                             foreach ($languages as $l) {
                                 if (in_array($l->code, ['sr', 'en', 'de'])) {
                                     $activeClass = ($currentLang === $l->code) ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'text-slate-400 border-transparent';
-                                    echo '<a href="/' . $l->code . $router->getUri() . '" class="flex items-center space-x-2 px-3 py-2 rounded-lg border text-sm ' . $activeClass . '">';
+                                    echo '<a href="' . htmlspecialchars(translated_content_path($l->code, $router->getUri() ?? '/', $currentLang)) . '" class="flex items-center space-x-2 px-3 py-2 rounded-lg border text-sm ' . $activeClass . '">';
                                     echo '<span class="fi fi-' . get_flag_code($l->code) . ' rounded-sm"></span>';
                                     echo '<span>' . htmlspecialchars($l->name) . '</span>';
                                     echo '</a>';
@@ -256,6 +259,7 @@
                         ?>
                     </div>
                 </div>
+                <?php endif; ?>
             </div>
         </nav>
 
@@ -269,7 +273,7 @@
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="grid grid-cols-1 md:grid-cols-4 gap-12">
                     <div class="col-span-1 md:col-span-2">
-                        <a href="/<?= $currentLang ?>" class="flex items-center space-x-3 mb-6">
+                        <a href="<?= htmlspecialchars(localized_path('/', $currentLang)) ?>" class="flex items-center space-x-3 mb-6">
                             <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center">
                                 <ion-icon name="code-working" class="text-2xl text-white"></ion-icon>
                             </div>
@@ -282,16 +286,16 @@
                     <div>
                         <h3 class="text-white font-semibold mb-6"><?= __('quick_links', 'Quick Links') ?></h3>
                         <ul class="space-y-4">
-                            <li><a href="/<?= $currentLang ?>/projekti" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('projects', 'Projects') ?></a></li>
-                            <li><a href="/<?= $currentLang ?>/novosti" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('news', 'News') ?></a></li>
-                            <li><a href="/<?= $currentLang ?>/o-autoru" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('about_me', 'About Me') ?></a></li>
+                            <li><a href="<?= htmlspecialchars(localized_path('/projekti', $currentLang)) ?>" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('projects', 'Projects') ?></a></li>
+                            <li><a href="<?= htmlspecialchars(localized_path('/novosti', $currentLang)) ?>" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('news', 'News') ?></a></li>
+                            <li><a href="<?= htmlspecialchars(localized_path('/o-autoru', $currentLang)) ?>" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('about_me', 'About Me') ?></a></li>
                         </ul>
                     </div>
                     <div>
                         <h3 class="text-white font-semibold mb-6"><?= __('legal', 'Legal') ?></h3>
                         <ul class="space-y-4">
-                            <li><a href="/<?= $currentLang ?>/politika-privatnosti" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('privacy_policy', 'Privacy Policy') ?></a></li>
-                            <li><a href="/<?= $currentLang ?>/uslovi-koriscenja" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('terms_of_service', 'Terms of Use') ?></a></li>
+                            <li><a href="<?= htmlspecialchars(localized_path('/politika-privatnosti', $currentLang)) ?>" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('privacy_policy', 'Privacy Policy') ?></a></li>
+                            <li><a href="<?= htmlspecialchars(localized_path('/uslovi-koriscenja', $currentLang)) ?>" class="text-slate-400 hover:text-indigo-400 transition-colors"><?= __('terms_of_service', 'Terms of Use') ?></a></li>
                         </ul>
                     </div>
                 </div>

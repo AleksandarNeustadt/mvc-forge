@@ -3,6 +3,9 @@
 namespace Tests\PhpUnit;
 
 use App\Core\database\Database;
+use App\Models\BlogPost;
+use App\Models\Language;
+use App\Models\Page;
 use JsonException;
 use PHPUnit\Framework\TestCase;
 use RuntimeException;
@@ -100,6 +103,201 @@ final class DatabaseHttpFeatureTest extends TestCase
         self::assertSame('/feature-smoke-page', $pageRow['route'] ?? null);
         self::assertSame(1, (int) ($pageRow['is_active'] ?? 0));
         self::assertSame(1, (int) ($pageRow['language_id'] ?? 0));
+    }
+
+    public function testLanguagePrefixedBlogListDoesNotLeakContentFromAnotherLanguage(): void
+    {
+        $serbianLanguage = Language::findByCode('sr');
+        self::assertNotNull($serbianLanguage);
+
+        $germanLanguage = new Language([
+            'code' => 'de',
+            'name' => 'German',
+            'native_name' => 'Deutsch',
+            'flag' => 'de',
+            'country_code' => 'DE',
+            'is_active' => 1,
+            'is_site_language' => 1,
+            'is_default' => 0,
+            'sort_order' => 2,
+        ]);
+        $germanLanguage->save();
+
+        $serbianPost = new BlogPost([
+            'title' => 'Srpske Novosti',
+            'slug' => 'srpske-novosti',
+            'excerpt' => 'Tekst na srpskom',
+            'content' => '<p>Tekst na srpskom</p>',
+            'status' => 'published',
+            'published_at' => time(),
+            'author_id' => 1,
+            'language_id' => $serbianLanguage->id,
+        ]);
+        $serbianPost->save();
+
+        $germanPost = new BlogPost([
+            'title' => 'Deutsche Nachrichten',
+            'slug' => 'deutsche-nachrichten',
+            'excerpt' => 'Text auf Deutsch',
+            'content' => '<p>Text auf Deutsch</p>',
+            'status' => 'published',
+            'published_at' => time(),
+            'author_id' => 1,
+            'language_id' => $germanLanguage->id,
+        ]);
+        $germanPost->save();
+
+        $serbianNewsPage = new Page([
+            'title' => 'Novosti',
+            'slug' => 'novosti',
+            'route' => '/novosti',
+            'page_type' => 'blog_list',
+            'application' => 'blog',
+            'template' => 'default',
+            'meta_title' => 'Novosti',
+            'meta_description' => 'Srpske novosti',
+            'meta_keywords' => 'novosti',
+            'is_active' => 1,
+            'is_in_menu' => 1,
+            'menu_order' => 1,
+            'language_id' => $serbianLanguage->id,
+        ]);
+        $serbianNewsPage->save();
+
+        $serbianResponse = $this->runHttpRequest('GET', '/sr/novosti');
+
+        self::assertSame(200, $serbianResponse['status']);
+        self::assertStringContainsString('Srpske Novosti', $serbianResponse['body']);
+        self::assertStringNotContainsString('Deutsche Nachrichten', $serbianResponse['body']);
+
+        $germanResponse = $this->runHttpRequest('GET', '/de/novosti');
+
+        self::assertSame(404, $germanResponse['status']);
+        self::assertStringNotContainsString('Srpske Novosti', $germanResponse['body']);
+    }
+
+    public function testDashboardAllowsSamePageSlugAndRouteForDifferentLanguages(): void
+    {
+        $serbianLanguage = Language::findByCode('sr');
+        self::assertNotNull($serbianLanguage);
+
+        $germanLanguage = new Language([
+            'code' => 'de',
+            'name' => 'German',
+            'native_name' => 'Deutsch',
+            'flag' => 'de',
+            'country_code' => 'DE',
+            'is_active' => 1,
+            'is_site_language' => 1,
+            'is_default' => 0,
+            'sort_order' => 2,
+        ]);
+        $germanLanguage->save();
+
+        $serbianPage = new Page([
+            'title' => 'Novosti',
+            'slug' => 'novosti',
+            'route' => '/novosti',
+            'page_type' => 'custom',
+            'content' => '<p>Srpske novosti</p>',
+            'template' => 'page',
+            'is_active' => 1,
+            'is_in_menu' => 1,
+            'menu_order' => 1,
+            'language_id' => $serbianLanguage->id,
+        ]);
+        $serbianPage->save();
+
+        $response = $this->runHttpRequest(
+            'POST',
+            '/sr/dashboard/pages',
+            [
+                'title' => 'Novosti DE',
+                'slug' => 'novosti',
+                'route' => '/novosti',
+                'application' => '',
+                'page_type' => 'custom',
+                'content' => '<p>Deutsche Nachrichten</p>',
+                'template' => 'page',
+                'meta_title' => 'Novosti DE',
+                'meta_description' => 'Deutsche Nachrichten',
+                'meta_keywords' => 'novosti',
+                'is_active' => '1',
+                'is_in_menu' => '1',
+                'menu_order' => '2',
+                'language_id' => (string) $germanLanguage->id,
+            ],
+            [
+                'user_id' => 1,
+                'login_user_agent' => 'PHPUnit Browser',
+                'last_activity' => time(),
+            ]
+        );
+
+        self::assertSame(302, $response['status']);
+        self::assertSame('', $response['stderr']);
+
+        $rows = Database::select(
+            'SELECT route, slug, language_id FROM pages WHERE route = ? ORDER BY language_id ASC',
+            ['/novosti']
+        );
+
+        self::assertCount(2, $rows);
+        self::assertSame((int) $serbianLanguage->id, (int) ($rows[0]['language_id'] ?? 0));
+        self::assertSame((int) $germanLanguage->id, (int) ($rows[1]['language_id'] ?? 0));
+    }
+
+    public function testTranslatedContentPathUsesTranslationGroupWhenAvailable(): void
+    {
+        $serbianLanguage = Language::findByCode('sr');
+        self::assertNotNull($serbianLanguage);
+
+        $germanLanguage = new Language([
+            'code' => 'de',
+            'name' => 'German',
+            'native_name' => 'Deutsch',
+            'flag' => 'de',
+            'country_code' => 'DE',
+            'is_active' => 1,
+            'is_site_language' => 1,
+            'is_default' => 0,
+            'sort_order' => 2,
+        ]);
+        $germanLanguage->save();
+
+        $translationGroupId = 'page-novosti-shared';
+
+        $serbianPage = new Page([
+            'title' => 'Novosti',
+            'slug' => 'novosti',
+            'route' => '/novosti',
+            'page_type' => 'custom',
+            'content' => '<p>Srpske novosti</p>',
+            'template' => 'page',
+            'is_active' => 1,
+            'is_in_menu' => 1,
+            'menu_order' => 1,
+            'language_id' => $serbianLanguage->id,
+            'translation_group_id' => $translationGroupId,
+        ]);
+        $serbianPage->save();
+
+        $germanPage = new Page([
+            'title' => 'Nachrichten',
+            'slug' => 'nachrichten',
+            'route' => '/nachrichten',
+            'page_type' => 'custom',
+            'content' => '<p>Deutsche Nachrichten</p>',
+            'template' => 'page',
+            'is_active' => 1,
+            'is_in_menu' => 1,
+            'menu_order' => 1,
+            'language_id' => $germanLanguage->id,
+            'translation_group_id' => $translationGroupId,
+        ]);
+        $germanPage->save();
+
+        self::assertSame('/de/nachrichten', translated_content_path('de', '/novosti', 'sr'));
     }
 
     /**

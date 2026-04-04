@@ -110,13 +110,23 @@ class DashboardPageService
         return (int) $value;
     }
 
-    public function validateRouteAndSlugUniqueness(string $route, string $slug, ?int $excludeId = null): array
+    public function validateRouteAndSlugUniqueness(
+        string $route,
+        string $slug,
+        ?int $excludeId = null,
+        ?int $languageId = null
+    ): array
     {
         $errors = [];
         $allPages = Page::all();
 
         foreach ($allPages as $page) {
             if ($excludeId !== null && $page->id === $excludeId) {
+                continue;
+            }
+
+            $pageLanguageId = $page->language_id !== null ? (int) $page->language_id : null;
+            if ($pageLanguageId !== $languageId) {
                 continue;
             }
 
@@ -150,7 +160,8 @@ class DashboardPageService
 
         $slug = (string) ($input['slug'] ?? '');
         $route = $this->normalizeRoute((string) ($input['route'] ?? ''), $slug, $application);
-        $uniquenessErrors = $this->validateRouteAndSlugUniqueness($route, $slug, $excludeId);
+        $languageId = $this->normalizeOptionalId($input['language_id'] ?? null);
+        $uniquenessErrors = $this->validateRouteAndSlugUniqueness($route, $slug, $excludeId, $languageId);
 
         foreach ($uniquenessErrors as $field => $fieldErrors) {
             $errors[$field] = array_merge($errors[$field] ?? [], $fieldErrors);
@@ -275,6 +286,10 @@ class DashboardPageService
         $page->parent_page_id = $this->normalizeOptionalId($input['parent_page_id'] ?? null);
         $page->navbar_id = $this->normalizeOptionalId($input['navbar_id'] ?? null);
         $page->language_id = $this->normalizeOptionalId($input['language_id'] ?? null);
+        $page->translation_group_id = $this->normalizeTranslationGroupId(
+            $input['translation_group_id'] ?? null,
+            $page->translation_group_id ?? null
+        );
         $page->display_options = $this->buildDisplayOptions($application, $pageType, $input);
 
         $this->applyBlogAssociations($page, $pageType, $input);
@@ -359,6 +374,21 @@ class DashboardPageService
             'languages' => $languages,
             'languagesData' => $languagesData,
         ];
+    }
+
+    private function normalizeTranslationGroupId(mixed $requestedGroupId, ?string $existingGroupId = null): string
+    {
+        $groupId = trim((string) ($requestedGroupId ?? ''));
+        if ($groupId !== '') {
+            return $groupId;
+        }
+
+        $groupId = trim((string) ($existingGroupId ?? ''));
+        if ($groupId !== '') {
+            return $groupId;
+        }
+
+        return 'page-' . bin2hex(random_bytes(16));
     }
 }
 

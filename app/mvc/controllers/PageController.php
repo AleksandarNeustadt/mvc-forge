@@ -9,6 +9,7 @@ use App\Core\routing\Router;
 use App\Models\BlogCategory;
 use App\Models\BlogPost;
 use App\Models\BlogTag;
+use App\Models\Language;
 use App\Models\Page;use BadMethodCallException;
 use Closure;
 use DateTime;
@@ -71,6 +72,22 @@ class PageController extends Controller
         return $this->currentRouter()?->getUri() ?? '/';
     }
 
+    private function currentLanguageId(): ?int
+    {
+        $language = Language::findByCode($this->currentLanguage());
+
+        return $language ? (int) $language->id : null;
+    }
+
+    private function belongsToCurrentLanguage(mixed $languageId): bool
+    {
+        $currentLanguageId = $this->currentLanguageId();
+
+        return $currentLanguageId !== null
+            ? (int) $languageId === $currentLanguageId
+            : $languageId === null;
+    }
+
     /**
      * Get URL for a blog post by finding the page that links to it
      * Uses SEO-friendly format: /category-slug/post-slug
@@ -96,21 +113,32 @@ class PageController extends Controller
         if ($primaryCategory && isset($primaryCategory['slug'])) {
             $categorySlug = $primaryCategory['slug'];
             $postSlug = $blogPost->slug;
-            return "/{$lang}/{$categorySlug}/{$postSlug}";
+            return localized_path("/{$categorySlug}/{$postSlug}", $lang);
         }
         
         // Fallback: if no category, use direct post slug (backward compatibility)
         // Find page that has this blog_post_id
-        $allPages = Page::all();
-        foreach ($allPages as $p) {
-            if ($p->blog_post_id == $postId && $p->is_active) {
-                $route = '/' . ltrim($p->route ?? '', '/');
-                return "/{$lang}{$route}";
-            }
+        $pageQuery = Page::query()
+            ->where('blog_post_id', $postId)
+            ->where('is_active', 1);
+
+        $languageId = $this->currentLanguageId();
+        if ($languageId !== null) {
+            $pageQuery->where('language_id', $languageId);
+        } else {
+            $pageQuery->where('id', -1);
+        }
+
+        $pageRow = $pageQuery->first();
+        if ($pageRow) {
+            $page = new Page();
+            $page = $page->newFromBuilder($pageRow);
+            $route = '/' . ltrim($page->route ?? '', '/');
+            return localized_path($route, $lang);
         }
         
         // Last resort: use post slug directly
-        return "/{$lang}/{$blogPost->slug}";
+        return localized_path("/{$blogPost->slug}", $lang);
     }
 
     /**
@@ -152,7 +180,7 @@ class PageController extends Controller
             // Skip hierarchical pattern matching for known non-blog routes
             // Check if this might be a contact form route by looking for exact page match one more time
             // This handles edge cases where route normalization might have failed
-            $exactPage = Page::findByRoute($route);
+            $exactPage = Page::findByRoute($route, $lang);
             if ($exactPage && $exactPage->is_active) {
                 $page = $exactPage;
                 Logger::debug("PageController::show() - Found page via findByRoute: ID={$page->id}, title={$page->title}, application={$page->application}");
@@ -166,11 +194,11 @@ class PageController extends Controller
                     Logger::debug("PageController::show() - Trying hierarchical URL - Category: {$categorySlug}, Post: {$postSlug}");
                     
                     // Find category by slug
-                    $category = BlogCategory::findBySlug($categorySlug);
+                    $category = BlogCategory::findBySlug($categorySlug, $lang);
                     if ($category) {
                         Logger::debug("PageController::show() - Found category: ID={$category->id}, Name={$category->name}");
                         // Find post by slug within this category
-                        $blogPost = BlogPost::findBySlug($postSlug);
+                        $blogPost = BlogPost::findBySlug($postSlug, $lang);
                         if ($blogPost) {
                             Logger::debug("PageController::show() - Found post: ID={$blogPost->id}, Title={$blogPost->title}");
                             // Verify post belongs to this category
@@ -231,18 +259,9 @@ class PageController extends Controller
                     $categorySlug = $routeParts[0];
                     
                     // Re-check for exact page match one more time (in case normalization issue)
-                    $allPagesAgain = Page::all();
-                    foreach ($allPagesAgain as $p) {
-                        $pageRoute = '/' . ltrim($p->route ?? '', '/');
-                        if ($pageRoute !== '/' && substr($pageRoute, -1) === '/') {
-                            $pageRoute = rtrim($pageRoute, '/');
-                        }
-                        
-                        if ($pageRoute === $route && $p->is_active) {
-                            $page = $p;
-                            Logger::debug("PageController::show() - Found page on second pass: ID={$page->id}, title={$page->title}, application={$page->application}");
-                            break;
-                        }
+                    $page = Page::findByRoute($route, $lang);
+                    if ($page && $page->is_active) {
+                        Logger::debug("PageController::show() - Found page on second pass: ID={$page->id}, title={$page->title}, application={$page->application}");
                     }
                     
                     // Only try category matching if no page was found
@@ -399,7 +418,7 @@ class PageController extends Controller
                 // Only render if this is actually a blog application and has a valid blog post
                 if ($application === 'blog' && $page->blog_post_id) {
                     $blogPost = BlogPost::find($page->blog_post_id);
-                    if ($blogPost) {
+                    if ($blogPost && $this->belongsToCurrentLanguage($blogPost->language_id)) {
                         $postArray = $blogPost->toArray();
                         // categories() and tags() return arrays (from QueryBuilder::get()), not model instances
                         $categories = $blogPost->categories();
@@ -435,7 +454,7 @@ class PageController extends Controller
                 // Blog category listing
                 if ($page->blog_category_id) {
                     $category = BlogCategory::find($page->blog_category_id);
-                    if ($category) {
+                    if ($category && $this->belongsToCurrentLanguage($category->language_id)) {
                         $data['category'] = $category->toArray();
                         // posts() returns arrays (from QueryBuilder::get()), not model instances
                         $posts = $category->posts();
@@ -484,7 +503,7 @@ class PageController extends Controller
                 // Blog tag listing
                 if ($page->blog_tag_id) {
                     $tag = BlogTag::find($page->blog_tag_id);
-                    if ($tag) {
+                    if ($tag && $this->belongsToCurrentLanguage($tag->language_id)) {
                         $data['tag'] = $tag->toArray();
                         // posts() returns arrays (from QueryBuilder::get()), not model instances
                         $posts = $tag->posts();
@@ -529,8 +548,16 @@ class PageController extends Controller
                 // Blog post list
                 $posts = BlogPost::query()
                     ->where('status', 'published')
-                    ->orderBy('published_at', 'DESC')
-                    ->get();
+                    ->orderBy('published_at', 'DESC');
+
+                $languageId = $this->currentLanguageId();
+                if ($languageId !== null) {
+                    $posts->where('language_id', $languageId);
+                } else {
+                    $posts->where('id', -1);
+                }
+
+                $posts = $posts->get();
                 
                 // QueryBuilder::get() returns arrays, not model instances
                 $postsArray = is_array($posts) ? $posts : [];

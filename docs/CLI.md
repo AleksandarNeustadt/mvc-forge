@@ -15,21 +15,24 @@ Prepares installation scaffolding and environment files.
 Local mode:
 
 ```bash
-php app/bin/console install:setup --mode=local --domain=localhost
+php app/bin/console install:setup --mode=local --domain=localhost --site-name="MVC Forge Local"
 ```
 
 Hosting mode:
 
 ```bash
-php app/bin/console install:setup --mode=hosting --domain=forgeng.dev
+php app/bin/console install:setup --mode=hosting --domain=forgeng.dev --site-name="ForgeNG"
 ```
 
 Options:
 
 - `--mode=local|hosting`
 - `--domain=<domain>`
+- `--site-name=<name>` - value written to `BRAND_NAME` in `app/.env`
 - `--public-path=<path>`
 - `--force` - overwrite generated `public_html/index.php`, `bootstrap_paths.php`, and `.htaccess`
+
+If `app/.env` already exists, `install:setup` updates `APP_URL`, `CORS_ALLOWED_ORIGINS`, and `BRAND_NAME` while preserving existing DB credentials and `APP_KEY`.
 
 ### `install:check`
 

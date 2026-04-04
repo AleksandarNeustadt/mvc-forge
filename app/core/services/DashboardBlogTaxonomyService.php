@@ -157,14 +157,14 @@ class DashboardBlogTaxonomyService
         return $slug !== '' ? str_slug($slug) : str_slug($fallbackValue);
     }
 
-    public function categorySlugExists(string $slug, ?int $excludeId = null): bool
+    public function categorySlugExists(string $slug, ?int $excludeId = null, ?int $languageId = null): bool
     {
-        return $this->slugExists(BlogCategory::query(), $slug, $excludeId);
+        return $this->slugExists(BlogCategory::query(), $slug, $excludeId, $languageId);
     }
 
-    public function tagSlugExists(string $slug, ?int $excludeId = null): bool
+    public function tagSlugExists(string $slug, ?int $excludeId = null, ?int $languageId = null): bool
     {
-        return $this->slugExists(BlogTag::query(), $slug, $excludeId);
+        return $this->slugExists(BlogTag::query(), $slug, $excludeId, $languageId);
     }
 
     public function validateCategoryInput(
@@ -178,7 +178,9 @@ class DashboardBlogTaxonomyService
             (string) ($input['name'] ?? '')
         );
 
-        if ($slug !== '' && $this->categorySlugExists($slug, $category ? (int) $category->id : null)) {
+        $languageId = $this->normalizeLanguageId($input['language_id'] ?? null);
+
+        if ($slug !== '' && $this->categorySlugExists($slug, $category ? (int) $category->id : null, $languageId)) {
             $errors['slug'] = array_merge(
                 $errors['slug'] ?? [],
                 ['A category with this slug already exists']
@@ -204,7 +206,9 @@ class DashboardBlogTaxonomyService
             (string) ($input['name'] ?? '')
         );
 
-        if ($slug !== '' && $this->tagSlugExists($slug, $excludeId)) {
+        $languageId = $this->normalizeLanguageId($input['language_id'] ?? null);
+
+        if ($slug !== '' && $this->tagSlugExists($slug, $excludeId, $languageId)) {
             $errors['slug'] = array_merge(
                 $errors['slug'] ?? [],
                 ['A tag with this slug already exists']
@@ -253,8 +257,12 @@ class DashboardBlogTaxonomyService
         $category->meta_description = $input['meta_description'] ?? '';
         $category->sort_order = (int) ($input['sort_order'] ?? 0);
 
-        $languageId = $input['language_id'] ?? null;
-        $category->language_id = ($languageId !== null && $languageId !== '') ? (int) $languageId : null;
+        $category->language_id = $this->normalizeLanguageId($input['language_id'] ?? null);
+        $category->translation_group_id = $this->normalizeTranslationGroupId(
+            $input['translation_group_id'] ?? null,
+            $category->translation_group_id ?? null,
+            'blog-category'
+        );
     }
 
     public function saveCategory(BlogCategory $category, array $input): BlogCategory
@@ -332,8 +340,12 @@ class DashboardBlogTaxonomyService
         $tag->slug = $slug ?? $this->normalizeSlug((string) ($input['slug'] ?? ''), (string) ($input['name'] ?? ''));
         $tag->description = $input['description'] ?? '';
 
-        $languageId = $input['language_id'] ?? null;
-        $tag->language_id = ($languageId !== null && $languageId !== '') ? (int) $languageId : null;
+        $tag->language_id = $this->normalizeLanguageId($input['language_id'] ?? null);
+        $tag->translation_group_id = $this->normalizeTranslationGroupId(
+            $input['translation_group_id'] ?? null,
+            $tag->translation_group_id ?? null,
+            'blog-tag'
+        );
     }
 
     public function saveTag(BlogTag $tag, array $input): BlogTag
@@ -415,15 +427,53 @@ class DashboardBlogTaxonomyService
         ];
     }
 
-    private function slugExists(QueryBuilder $query, string $slug, ?int $excludeId = null): bool
+    private function slugExists(
+        QueryBuilder $query,
+        string $slug,
+        ?int $excludeId = null,
+        ?int $languageId = null
+    ): bool
     {
         $query->where('slug', $slug);
+
+        if ($languageId !== null) {
+            $query->where('language_id', $languageId);
+        } else {
+            $query->whereNull('language_id');
+        }
 
         if ($excludeId !== null) {
             $query->where('id', '!=', $excludeId);
         }
 
         return $query->exists();
+    }
+
+    private function normalizeLanguageId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === '0' || $value === 0) {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    private function normalizeTranslationGroupId(
+        mixed $requestedGroupId,
+        ?string $existingGroupId,
+        string $prefix
+    ): string {
+        $groupId = trim((string) ($requestedGroupId ?? ''));
+        if ($groupId !== '') {
+            return $groupId;
+        }
+
+        $groupId = trim((string) ($existingGroupId ?? ''));
+        if ($groupId !== '') {
+            return $groupId;
+        }
+
+        return $prefix . '-' . bin2hex(random_bytes(16));
     }
 }
 

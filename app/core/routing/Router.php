@@ -4,11 +4,13 @@ namespace App\Core\routing;
 
 
 use App\Core\container\Container;
+use App\Core\config\Env;
 use App\Core\http\Request;
 use App\Core\logging\Logger;
 use App\Core\middleware\IpTrackingMiddleware;
 use App\Core\middleware\SecurityHeadersMiddleware;
 use App\Core\services\GeoLocation;use BadMethodCallException;
+use App\Models\Language;
 use Closure;
 use DateTime;
 use DateTimeImmutable;
@@ -118,6 +120,33 @@ class Router {
                 $this->uri = rtrim($this->uri, '/');
             }
             Logger::debug('Router normalized API URI', ['uri' => $this->uri]);
+            return;
+        }
+
+        if (!site_is_multilingual()) {
+            $defaultLanguage = Language::getDefault();
+            $this->lang = $defaultLanguage?->code ?: (string) Env::get('SITE_DEFAULT_LANGUAGE', 'sr');
+
+            if (!empty($parts) && in_array(reset($parts), $this->supportedLangs, true)) {
+                array_shift($parts);
+                $targetPath = '/' . implode('/', $parts);
+                if ($targetPath !== '/') {
+                    $targetPath = rtrim($targetPath, '/');
+                }
+                if ($queryString) {
+                    $targetPath .= '?' . $queryString;
+                }
+
+                $scheme = 'https';
+                $host = $_SERVER['HTTP_HOST'] ?? $_SERVER['SERVER_NAME'] ?? 'localhost';
+                header('Location: ' . "{$scheme}://{$host}{$targetPath}", true, 301);
+                exit;
+            }
+
+            $this->uri = '/' . implode('/', $parts);
+            if ($this->uri !== '/') {
+                $this->uri = rtrim($this->uri, '/');
+            }
             return;
         }
 

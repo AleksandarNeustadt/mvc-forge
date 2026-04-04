@@ -54,7 +54,8 @@ class Page extends Model
         'blog_post_id',
         'blog_category_id',
         'blog_tag_id',
-        'language_id'
+        'language_id',
+        'translation_group_id'
     ];
 
     protected array $casts = [
@@ -67,6 +68,7 @@ class Page extends Model
         'blog_category_id' => 'int',
         'blog_tag_id' => 'int',
         'language_id' => 'int',
+        'translation_group_id' => 'string',
         'display_options' => 'json',  // JSON string to array
         'created_at' => 'datetime',
         'updated_at' => 'datetime'
@@ -78,11 +80,15 @@ class Page extends Model
     public static function findBySlug(string $slug, ?string $langCode = null): ?static
     {
         $query = static::query()->where('slug', $slug);
-        
+
         // Filter by language
-        if (class_exists('Language')) {
+        if (class_exists(Language::class)) {
             $langCode = $langCode ?: current_lang();
             $language = Language::findByCode($langCode);
+            if (!$language) {
+                return null;
+            }
+
             if ($language) {
                 $query->where('language_id', $language->id);
             }
@@ -101,11 +107,15 @@ class Page extends Model
     public static function findByRoute(string $route, ?string $langCode = null): ?static
     {
         $query = static::query()->where('route', $route);
-        
+
         // Filter by language
-        if (class_exists('Language')) {
+        if (class_exists(Language::class)) {
             $langCode = $langCode ?: current_lang();
             $language = Language::findByCode($langCode);
+            if (!$language) {
+                return null;
+            }
+
             if ($language) {
                 $query->where('language_id', $language->id);
             }
@@ -240,9 +250,15 @@ class Page extends Model
     /**
      * Check if route exists (excluding current page)
      */
-    public static function routeExists(string $route, ?int $excludeId = null): bool
+    public static function routeExists(string $route, ?int $excludeId = null, ?int $languageId = null): bool
     {
         $query = static::query()->where('route', $route);
+
+        if ($languageId !== null) {
+            $query->where('language_id', $languageId);
+        } else {
+            $query->whereNull('language_id');
+        }
         
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
@@ -254,13 +270,18 @@ class Page extends Model
     /**
      * Generate unique slug
      */
-    protected static function generateUniqueSlug(string $base, ?int $excludeId = null): string
+    protected static function generateUniqueSlug(string $base, ?int $excludeId = null, ?int $languageId = null): string
     {
         $slug = str_slug($base);
         $originalSlug = $slug;
         $counter = 1;
 
         $query = static::query()->where('slug', $slug);
+        if ($languageId !== null) {
+            $query->where('language_id', $languageId);
+        } else {
+            $query->whereNull('language_id');
+        }
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
         }
@@ -269,6 +290,11 @@ class Page extends Model
             $slug = $originalSlug . '-' . $counter;
             $counter++;
             $query = static::query()->where('slug', $slug);
+            if ($languageId !== null) {
+                $query->where('language_id', $languageId);
+            } else {
+                $query->whereNull('language_id');
+            }
             if ($excludeId) {
                 $query->where('id', '!=', $excludeId);
             }

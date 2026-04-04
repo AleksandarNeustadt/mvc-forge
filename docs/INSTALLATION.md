@@ -16,7 +16,7 @@ npm run build
 Run the hosting installer helper:
 
 ```bash
-php app/bin/console install:setup --mode=hosting --domain=example.com
+php app/bin/console install:setup --mode=hosting --domain=example.com --site-name="Example Site"
 ```
 
 Edit `app/.env` DB credentials, then run:
@@ -52,7 +52,7 @@ Use `db:migrate --baseline` only once on legacy databases that already have the 
 For local development, the helper can scaffold/update `public_html/`, create `.env` from `.env.example`, prepare storage, and generate `APP_KEY`:
 
 ```bash
-php app/bin/console install:setup --mode=local --domain=localhost
+php app/bin/console install:setup --mode=local --domain=localhost --site-name="MVC Forge Local"
 ```
 
 ## Hosting Diagnostics Helper
@@ -60,8 +60,10 @@ php app/bin/console install:setup --mode=local --domain=localhost
 On hosting, use:
 
 ```bash
-php app/bin/console install:setup --mode=hosting --domain=forgeng.dev
+php app/bin/console install:setup --mode=hosting --domain=forgeng.dev --site-name="ForgeNG"
 ```
+
+If `app/.env` already exists, the helper keeps DB credentials and `APP_KEY`, but refreshes `APP_URL`, `CORS_ALLOWED_ORIGINS`, and `BRAND_NAME` from the installer options.
 
 If server settings cannot be changed automatically, the command prints manual fix instructions. For example, if PHP-FPM `open_basedir` does not include the application directory, it will tell you which pool file to edit and what path to add.
 

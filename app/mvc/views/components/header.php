@@ -65,7 +65,7 @@ function langLink($code, $flagCode, $name, $currentLang) {
     $textClass = $isActive ? 'text-white' : 'text-slate-300 group-hover:text-white';
     $checkmark = $isActive ? '<svg class="w-4 h-4 text-theme-primary ml-auto" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>' : '';
 
-    return '<a href="/' . $code . '" class="flex items-center gap-3 px-3 py-2 hover:bg-slate-800/60 rounded-lg transition-colors group ' . $activeClass . '">
+    return '<a href="' . htmlspecialchars(translated_content_path($code, null, $currentLang), ENT_QUOTES, 'UTF-8') . '" class="flex items-center gap-3 px-3 py-2 hover:bg-slate-800/60 rounded-lg transition-colors group ' . $activeClass . '">
         <span class="fi fi-' . $flagCode . '" style="font-size: 1.25rem;"></span>
         <span class="' . $textClass . ' font-medium">' . htmlspecialchars($name) . '</span>
         ' . $checkmark . '
@@ -73,6 +73,10 @@ function langLink($code, $flagCode, $name, $currentLang) {
 }
 
 function renderLanguageDropdown($prefix = '') {
+    if (!site_is_multilingual()) {
+        return;
+    }
+
     global $currentLang, $currentFlagCode, $flagCodes, $lang, $router;
     
     // Get router if not already available
@@ -207,7 +211,7 @@ function renderLanguageDropdown($prefix = '') {
             <div class="flex items-center h-20">
                 <!-- LEFT: Brand (same width as sidebar - w-64) -->
                 <div class="w-64 flex-shrink-0 flex items-center px-4 border-r border-slate-700/50">
-                    <a href="<?= '/' . $currentLang . '/dashboard' ?>" class="text-xl sm:text-2xl font-bold text-white tracking-tight hover:scale-105 transition-transform">
+                    <a href="<?= htmlspecialchars(localized_path('/dashboard', $currentLang)) ?>" class="text-xl sm:text-2xl font-bold text-white tracking-tight hover:scale-105 transition-transform">
                         <?= Env::get('BRAND_NAME', 'aleksandar.pro') ?>
                     </a>
                 </div>
@@ -250,10 +254,10 @@ function renderLanguageDropdown($prefix = '') {
                         <?php if (!$isLoggedIn): ?>
                             <!-- Login / Register Links (when not logged in) -->
                             <div class="flex items-center space-x-2">
-                                <a href="/<?= $currentLang ?>/login" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/50 hover:border-theme-primary/70 text-slate-300 hover:text-white font-medium transition-all h-[40px]">
+                                <a href="<?= htmlspecialchars(localized_path('/login', $currentLang)) ?>" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/50 hover:border-theme-primary/70 text-slate-300 hover:text-white font-medium transition-all h-[40px]">
                                     Login
                                 </a>
-                                <a href="/<?= $currentLang ?>/register" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-theme-primary hover:bg-theme-primary/90 text-white font-medium transition-all border border-transparent h-[40px]">
+                                <a href="<?= htmlspecialchars(localized_path('/register', $currentLang)) ?>" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-theme-primary hover:bg-theme-primary/90 text-white font-medium transition-all border border-transparent h-[40px]">
                                     Register
                                 </a>
                             </div>
@@ -298,7 +302,7 @@ function renderLanguageDropdown($prefix = '') {
                                         }
                                         if ($currentUserForPermission && ($currentUserForPermission->hasPermission('system.dashboard') || $currentUserForPermission->isSuperAdmin())):
                                         ?>
-                                            <a href="/<?= $currentLang ?>/dashboard" class="flex items-center gap-3 px-3 py-2 hover:bg-slate-800/60 rounded-lg transition-colors group">
+                                            <a href="<?= htmlspecialchars(localized_path('/dashboard', $currentLang)) ?>" class="flex items-center gap-3 px-3 py-2 hover:bg-slate-800/60 rounded-lg transition-colors group">
                                                 <ion-icon name="grid-outline" class="w-5 h-5 text-slate-400 group-hover:text-theme-primary flex-shrink-0"></ion-icon>
                                                 <span class="text-slate-300 group-hover:text-white font-medium">Dashboard</span>
                                             </a>
@@ -374,7 +378,7 @@ function renderLanguageDropdown($prefix = '') {
                                         </div>
                                         
                                         <div class="border-t border-slate-800/50 my-2"></div>
-                                        <form method="POST" action="/<?= $currentLang ?>/logout" class="p-0 m-0">
+                                        <form method="POST" action="<?= htmlspecialchars(localized_path('/logout', $currentLang)) ?>" class="p-0 m-0">
                                             <?php
                                             // Generate CSRF token
                                             if (class_exists('CSRF')) {
@@ -398,7 +402,7 @@ function renderLanguageDropdown($prefix = '') {
             <div class="flex items-center justify-between h-16">
                 <!-- LEFT: Brand -->
                 <div class="flex-shrink-0">
-                    <a href="/<?= $currentLang ?>" class="text-xl sm:text-2xl font-bold text-white tracking-tight hover:scale-105 transition-transform">
+                    <a href="<?= htmlspecialchars(localized_path('/', $currentLang)) ?>" class="text-xl sm:text-2xl font-bold text-white tracking-tight hover:scale-105 transition-transform">
                         <?= Env::get('BRAND_NAME', 'aleksandar.pro') ?>
                     </a>
                 </div>
@@ -421,7 +425,7 @@ function renderLanguageDropdown($prefix = '') {
                         foreach ($headerMenus as $menu) {
                             $menuItems = $menu->getMenuItems();
                             foreach ($menuItems as $menuPage) {
-                                $url = '/' . $currentLang . $menuPage->route;
+                                $url = localized_path($menuPage->route, $currentLang);
                                 $title = htmlspecialchars($menuPage->title ?? '');
                                 echo '<a href="' . $url . '" class="text-slate-300 hover:text-theme-primary transition-colors font-medium">' . $title . '</a>';
                             }
@@ -430,7 +434,7 @@ function renderLanguageDropdown($prefix = '') {
                         // Fallback to old behavior if NavigationMenu doesn't exist yet
                         $menuItems = Page::getMenuItems();
                         foreach ($menuItems as $menuPage) {
-                            $url = '/' . $currentLang . $menuPage->route;
+                            $url = localized_path($menuPage->route, $currentLang);
                             $title = htmlspecialchars($menuPage->title ?? '');
                             echo '<a href="' . $url . '" class="text-slate-300 hover:text-theme-primary transition-colors font-medium">' . $title . '</a>';
                         }
@@ -478,10 +482,10 @@ function renderLanguageDropdown($prefix = '') {
                     <?php if (!$isLoggedIn): ?>
                         <!-- Login / Register Links (when not logged in) -->
                         <div class="flex items-center space-x-2">
-                            <a href="/<?= $currentLang ?>/login" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/50 hover:border-theme-primary/70 text-slate-300 hover:text-white font-medium transition-all h-[40px]">
+                            <a href="<?= htmlspecialchars(localized_path('/login', $currentLang)) ?>" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/60 border border-slate-700/50 hover:border-theme-primary/70 text-slate-300 hover:text-white font-medium transition-all h-[40px]">
                                 Login
                             </a>
-                            <a href="/<?= $currentLang ?>/register" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-theme-primary hover:bg-theme-primary/90 text-white font-medium transition-all border border-transparent h-[40px]">
+                            <a href="<?= htmlspecialchars(localized_path('/register', $currentLang)) ?>" class="flex items-center gap-2 px-3 py-2 rounded-lg bg-theme-primary hover:bg-theme-primary/90 text-white font-medium transition-all border border-transparent h-[40px]">
                                 Register
                             </a>
                         </div>
@@ -526,7 +530,7 @@ function renderLanguageDropdown($prefix = '') {
                                     }
                                     if ($currentUserForPermission && ($currentUserForPermission->hasPermission('system.dashboard') || $currentUserForPermission->isSuperAdmin())):
                                     ?>
-                                        <a href="/<?= $currentLang ?>/dashboard" class="flex items-center gap-3 px-3 py-2 hover:bg-slate-800/60 rounded-lg transition-colors group">
+                                        <a href="<?= htmlspecialchars(localized_path('/dashboard', $currentLang)) ?>" class="flex items-center gap-3 px-3 py-2 hover:bg-slate-800/60 rounded-lg transition-colors group">
                                             <ion-icon name="grid-outline" class="w-5 h-5 text-slate-400 group-hover:text-theme-primary flex-shrink-0"></ion-icon>
                                             <span class="text-slate-300 group-hover:text-white font-medium">Dashboard</span>
                                         </a>
@@ -602,7 +606,7 @@ function renderLanguageDropdown($prefix = '') {
                                     </div>
                                     
                                     <div class="border-t border-slate-800/50 my-2"></div>
-                                    <form method="POST" action="/<?= $currentLang ?>/logout" class="p-0 m-0">
+                                    <form method="POST" action="<?= htmlspecialchars(localized_path('/logout', $currentLang)) ?>" class="p-0 m-0">
                                         <?php
                                         // Generate CSRF token
                                         if (class_exists('CSRF')) {
@@ -641,7 +645,7 @@ function renderLanguageDropdown($prefix = '') {
                     foreach ($headerMenus as $menu) {
                         $menuItems = $menu->getMenuItems();
                         foreach ($menuItems as $menuPage) {
-                            $url = '/' . $currentLang . $menuPage->route;
+                            $url = localized_path($menuPage->route, $currentLang);
                             $title = htmlspecialchars($menuPage->title ?? '');
                             echo '<a href="' . $url . '" class="block px-4 py-3 text-slate-300 hover:text-theme-primary hover:bg-slate-800/40 rounded-lg transition-colors">' . $title . '</a>';
                         }
@@ -650,7 +654,7 @@ function renderLanguageDropdown($prefix = '') {
                     // Fallback to old behavior if NavigationMenu doesn't exist yet
                     $menuItems = Page::getMenuItems();
                     foreach ($menuItems as $menuPage) {
-                        $url = '/' . $currentLang . $menuPage->route;
+                        $url = localized_path($menuPage->route, $currentLang);
                         $title = htmlspecialchars($menuPage->title ?? '');
                         echo '<a href="' . $url . '" class="block px-4 py-3 text-slate-300 hover:text-theme-primary hover:bg-slate-800/40 rounded-lg transition-colors">' . $title . '</a>';
                     }
@@ -662,4 +666,3 @@ function renderLanguageDropdown($prefix = '') {
         <?php endif; ?>
     </nav>
 </header>
-

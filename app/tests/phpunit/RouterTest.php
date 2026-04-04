@@ -10,17 +10,27 @@ final class RouterTest extends TestCase
 {
     private array $serverBackup = [];
     private array $postBackup = [];
+    private string|false $siteLanguageModeBackup = false;
 
     protected function setUp(): void
     {
         $this->serverBackup = $_SERVER;
         $this->postBackup = $_POST;
+        $this->siteLanguageModeBackup = getenv('SITE_LANGUAGE_MODE');
     }
 
     protected function tearDown(): void
     {
         $_SERVER = $this->serverBackup;
         $_POST = $this->postBackup;
+
+        if ($this->siteLanguageModeBackup === false) {
+            putenv('SITE_LANGUAGE_MODE');
+            unset($_ENV['SITE_LANGUAGE_MODE']);
+        } else {
+            putenv('SITE_LANGUAGE_MODE=' . $this->siteLanguageModeBackup);
+            $_ENV['SITE_LANGUAGE_MODE'] = $this->siteLanguageModeBackup;
+        }
     }
 
     public function testLanguagePrefixIsExtractedFromRegularRoute(): void
@@ -71,5 +81,20 @@ final class RouterTest extends TestCase
 
         self::assertSame('DELETE', $router->getMethod());
         self::assertSame('/dashboard/pages/10', $router->getUri());
+    }
+
+    public function testSingleLanguageModeKeepsUrlsWithoutLanguagePrefix(): void
+    {
+        putenv('SITE_LANGUAGE_MODE=single');
+        $_ENV['SITE_LANGUAGE_MODE'] = 'single';
+        $_SERVER['REQUEST_METHOD'] = 'GET';
+        $_SERVER['REQUEST_URI'] = '/o-autoru';
+        $_POST = [];
+
+        $router = new Router(new RouteCollection());
+
+        self::assertSame('sr', $router->getLanguage());
+        self::assertSame('/o-autoru', $router->getUri());
+        self::assertSame('/o-autoru', localized_path('/o-autoru', 'sr'));
     }
 }

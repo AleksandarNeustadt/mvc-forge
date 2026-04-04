@@ -43,7 +43,7 @@ env[APP_ROOT_OVERRIDE] = /absolute/path/to/app
 ## Session and Branding
 
 - `SESSION_LIFETIME` - session lifetime in minutes
-- `BRAND_NAME` - site brand displayed in UI and emails
+- `BRAND_NAME` - site brand displayed in UI and emails; `install:setup --site-name=...` writes this value
 - `BRAND_TAGLINE` - fallback title/tagline
 
 ## Local Frontend Dev

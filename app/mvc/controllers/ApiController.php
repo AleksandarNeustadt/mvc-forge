@@ -54,6 +54,96 @@ class ApiController extends Controller
 
         $this->responseFormatter = $responseFormatter ?? new ApiResponseFormatterService();
     }
+
+    private function resolveLanguageIdFromPayload(array $data, ?int $currentLanguageId = null): ?int
+    {
+        if (array_key_exists('language_id', $data)) {
+            $languageId = $data['language_id'];
+            return ($languageId === null || $languageId === '' || $languageId === '0' || $languageId === 0)
+                ? null
+                : (int) $languageId;
+        }
+
+        if (!empty($data['language_code'])) {
+            $language = Language::findByCode((string) $data['language_code']);
+            return $language ? (int) $language->id : null;
+        }
+
+        return $currentLanguageId;
+    }
+
+    private function languageCodeExists(array $data): bool
+    {
+        if (empty($data['language_code'])) {
+            return true;
+        }
+
+        return Language::findByCode((string) $data['language_code']) !== null;
+    }
+
+    private function pageSlugOrRouteExists(string $slug, string $route, ?int $languageId, ?int $excludePageId = null): ?string
+    {
+        $slugQuery = Page::query()->where('slug', $slug);
+        $routeQuery = Page::query()->where('route', $route);
+
+        if ($languageId !== null) {
+            $slugQuery->where('language_id', $languageId);
+            $routeQuery->where('language_id', $languageId);
+        } else {
+            $slugQuery->whereNull('language_id');
+            $routeQuery->whereNull('language_id');
+        }
+
+        if ($excludePageId !== null) {
+            $slugQuery->where('id', '!=', $excludePageId);
+            $routeQuery->where('id', '!=', $excludePageId);
+        }
+
+        if ($slugQuery->exists()) {
+            return 'Slug already exists for this language';
+        }
+
+        if ($routeQuery->exists()) {
+            return 'Route already exists for this language';
+        }
+
+        return null;
+    }
+
+    private function contentSlugExists(string $modelClass, string $slug, ?int $languageId, ?int $excludeId = null): bool
+    {
+        $query = $modelClass::query()->where('slug', $slug);
+
+        if ($languageId !== null) {
+            $query->where('language_id', $languageId);
+        } else {
+            $query->whereNull('language_id');
+        }
+
+        if ($excludeId !== null) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        return $query->exists();
+    }
+
+    private function normalizeTranslationGroupId(
+        mixed $requestedGroupId,
+        ?string $existingGroupId,
+        string $prefix
+    ): string {
+        $groupId = trim((string) ($requestedGroupId ?? ''));
+        if ($groupId !== '') {
+            return $groupId;
+        }
+
+        $groupId = trim((string) ($existingGroupId ?? ''));
+        if ($groupId !== '') {
+            return $groupId;
+        }
+
+        return $prefix . '-' . bin2hex(random_bytes(16));
+    }
     /**
      * Login and get API token
      * POST /api/auth/login
@@ -283,21 +373,25 @@ class ApiController extends Controller
             $this->jsonResponse(false, 'Title is required', null, 400);
             return;
         }
-        
-        // Get language if provided
-        $languageId = null;
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $languageId = $language->id;
-            }
+
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
         }
+
+        $languageId = $this->resolveLanguageIdFromPayload($data);
         
         // Generate slug if not provided
         $slug = $data['slug'] ?? str_slug($data['title']);
         
         // Generate route if not provided
         $route = $data['route'] ?? '/' . $slug;
+
+        $uniquenessError = $this->pageSlugOrRouteExists($slug, $route, $languageId);
+        if ($uniquenessError !== null) {
+            $this->jsonResponse(false, $uniquenessError, null, 422);
+            return;
+        }
         
         $pageData = [
             'title' => $data['title'],
@@ -313,7 +407,12 @@ class ApiController extends Controller
             'menu_order' => $data['menu_order'] ?? 0,
             'parent_page_id' => $data['parent_page_id'] ?? null,
             'navbar_id' => $data['navbar_id'] ?? null,
-            'language_id' => $languageId
+            'language_id' => $languageId,
+            'translation_group_id' => $this->normalizeTranslationGroupId(
+                $data['translation_group_id'] ?? null,
+                null,
+                'page'
+            )
         ];
         
         $page = Page::create($pageData);
@@ -336,12 +435,24 @@ class ApiController extends Controller
         
         $data = Input::json() ?? $this->request->post();
         
-        // Update language if provided
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $data['language_id'] = $language->id;
-            }
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
+        }
+
+        $data['language_id'] = $this->resolveLanguageIdFromPayload($data, $page->language_id ? (int) $page->language_id : null);
+        $data['translation_group_id'] = $this->normalizeTranslationGroupId(
+            $data['translation_group_id'] ?? null,
+            $page->translation_group_id ?? null,
+            'page'
+        );
+        $slug = (string) ($data['slug'] ?? $page->slug ?? '');
+        $route = (string) ($data['route'] ?? $page->route ?? '');
+
+        $uniquenessError = $this->pageSlugOrRouteExists($slug, $route, $data['language_id'], (int) $page->id);
+        if ($uniquenessError !== null) {
+            $this->jsonResponse(false, $uniquenessError, null, 422);
+            return;
         }
         
         // Update fields
@@ -434,12 +545,16 @@ class ApiController extends Controller
             return;
         }
         
-        $languageId = null;
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $languageId = $language->id;
-            }
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
+        }
+
+        $languageId = $this->resolveLanguageIdFromPayload($data);
+        $slug = $data['slug'] ?? str_slug($data['title']);
+        if ($this->contentSlugExists(BlogPost::class, (string) $slug, $languageId)) {
+            $this->jsonResponse(false, 'Slug already exists for this language', null, 422);
+            return;
         }
         
         $menuData = [
@@ -584,7 +699,7 @@ class ApiController extends Controller
         
         $postData = [
             'title' => $data['title'],
-            'slug' => $data['slug'] ?? str_slug($data['title']),
+            'slug' => $slug,
             'excerpt' => $data['excerpt'] ?? null,
             'content' => $data['content'] ?? '',
             'featured_image' => $data['featured_image'] ?? null,
@@ -594,7 +709,12 @@ class ApiController extends Controller
             'meta_title' => $data['meta_title'] ?? null,
             'meta_description' => $data['meta_description'] ?? null,
             'meta_keywords' => $data['meta_keywords'] ?? null,
-            'language_id' => $languageId
+            'language_id' => $languageId,
+            'translation_group_id' => $this->normalizeTranslationGroupId(
+                $data['translation_group_id'] ?? null,
+                null,
+                'blog-post'
+            )
         ];
         
         $post = BlogPost::create($postData);
@@ -627,11 +747,21 @@ class ApiController extends Controller
         
         $data = Input::json() ?? $this->request->post();
         
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $data['language_id'] = $language->id;
-            }
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
+        }
+
+        $data['language_id'] = $this->resolveLanguageIdFromPayload($data, $post->language_id ? (int) $post->language_id : null);
+        $data['translation_group_id'] = $this->normalizeTranslationGroupId(
+            $data['translation_group_id'] ?? null,
+            $post->translation_group_id ?? null,
+            'blog-post'
+        );
+        $slug = (string) ($data['slug'] ?? $post->slug ?? '');
+        if ($slug !== '' && $this->contentSlugExists(BlogPost::class, $slug, $data['language_id'], (int) $post->id)) {
+            $this->jsonResponse(false, 'Slug already exists for this language', null, 422);
+            return;
         }
         
         foreach ($data as $key => $value) {
@@ -712,9 +842,18 @@ class ApiController extends Controller
                     }
                     
                     // Create post
+                    $postSlug = $postData['slug'] ?? str_slug($postData['title']);
+                    if ($this->contentSlugExists(BlogPost::class, (string) $postSlug, $languageId)) {
+                        $errors[] = [
+                            'index' => $index,
+                            'error' => 'Slug already exists for this language'
+                        ];
+                        continue;
+                    }
+
                     $newPostData = [
                         'title' => $postData['title'],
-                        'slug' => $postData['slug'] ?? str_slug($postData['title']),
+                        'slug' => $postSlug,
                         'excerpt' => $postData['excerpt'] ?? null,
                         'content' => $postData['content'] ?? '',
                         'featured_image' => $postData['featured_image'] ?? null,
@@ -724,7 +863,12 @@ class ApiController extends Controller
                         'meta_title' => $postData['meta_title'] ?? null,
                         'meta_description' => $postData['meta_description'] ?? null,
                         'meta_keywords' => $postData['meta_keywords'] ?? null,
-                        'language_id' => $languageId
+                        'language_id' => $languageId,
+                        'translation_group_id' => $this->normalizeTranslationGroupId(
+                            $postData['translation_group_id'] ?? null,
+                            null,
+                            'blog-post'
+                        )
                     ];
                     
                     $post = BlogPost::create($newPostData);
@@ -733,17 +877,24 @@ class ApiController extends Controller
                     if (!empty($postData['categories']) && is_array($postData['categories'])) {
                         $categoryIds = [];
                         foreach ($postData['categories'] as $catName) {
+                            $categorySlug = str_slug($catName);
+
                             // Find or create category
                             $category = BlogCategory::query()
-                                ->where('name', $catName)
+                                ->where('slug', $categorySlug)
                                 ->where('language_id', $languageId)
                                 ->first();
                             
                             if (!$category) {
                                 $category = BlogCategory::create([
                                     'name' => $catName,
-                                    'slug' => str_slug($catName),
+                                    'slug' => $categorySlug,
                                     'language_id' => $languageId,
+                                    'translation_group_id' => $this->normalizeTranslationGroupId(
+                                        $postData['category_translation_group_id'] ?? null,
+                                        null,
+                                        'blog-category'
+                                    ),
                                     'description' => null
                                 ]);
                             }
@@ -757,17 +908,24 @@ class ApiController extends Controller
                     if (!empty($postData['tags']) && is_array($postData['tags'])) {
                         $tagIds = [];
                         foreach ($postData['tags'] as $tagName) {
+                            $tagSlug = str_slug($tagName);
+
                             // Find or create tag
                             $tag = BlogTag::query()
-                                ->where('name', $tagName)
+                                ->where('slug', $tagSlug)
                                 ->where('language_id', $languageId)
                                 ->first();
                             
                             if (!$tag) {
                                 $tag = BlogTag::create([
                                     'name' => $tagName,
-                                    'slug' => str_slug($tagName),
-                                    'language_id' => $languageId
+                                    'slug' => $tagSlug,
+                                    'language_id' => $languageId,
+                                    'translation_group_id' => $this->normalizeTranslationGroupId(
+                                        $postData['tag_translation_group_id'] ?? null,
+                                        null,
+                                        'blog-tag'
+                                    )
                                 ]);
                             }
                             
@@ -887,24 +1045,33 @@ class ApiController extends Controller
             return;
         }
         
-        $languageId = null;
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $languageId = $language->id;
-            }
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
+        }
+
+        $languageId = $this->resolveLanguageIdFromPayload($data);
+        $slug = $data['slug'] ?? str_slug($data['name']);
+        if ($this->contentSlugExists(BlogCategory::class, (string) $slug, $languageId)) {
+            $this->jsonResponse(false, 'Slug already exists for this language', null, 422);
+            return;
         }
         
         $categoryData = [
             'name' => $data['name'],
-            'slug' => $data['slug'] ?? str_slug($data['name']),
+            'slug' => $slug,
             'description' => $data['description'] ?? null,
             'parent_id' => $data['parent_id'] ?? null,
             'image' => $data['image'] ?? null,
             'meta_title' => $data['meta_title'] ?? null,
             'meta_description' => $data['meta_description'] ?? null,
             'sort_order' => $data['sort_order'] ?? 0,
-            'language_id' => $languageId
+            'language_id' => $languageId,
+            'translation_group_id' => $this->normalizeTranslationGroupId(
+                $data['translation_group_id'] ?? null,
+                null,
+                'blog-category'
+            )
         ];
         
         $category = BlogCategory::create($categoryData);
@@ -927,11 +1094,21 @@ class ApiController extends Controller
         
         $data = Input::json() ?? $this->request->post();
         
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $data['language_id'] = $language->id;
-            }
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
+        }
+
+        $data['language_id'] = $this->resolveLanguageIdFromPayload($data, $category->language_id ? (int) $category->language_id : null);
+        $data['translation_group_id'] = $this->normalizeTranslationGroupId(
+            $data['translation_group_id'] ?? null,
+            $category->translation_group_id ?? null,
+            'blog-category'
+        );
+        $slug = (string) ($data['slug'] ?? $category->slug ?? '');
+        if ($slug !== '' && $this->contentSlugExists(BlogCategory::class, $slug, $data['language_id'], (int) $category->id)) {
+            $this->jsonResponse(false, 'Slug already exists for this language', null, 422);
+            return;
         }
         
         foreach ($data as $key => $value) {
@@ -1023,19 +1200,28 @@ class ApiController extends Controller
             return;
         }
         
-        $languageId = null;
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $languageId = $language->id;
-            }
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
+        }
+
+        $languageId = $this->resolveLanguageIdFromPayload($data);
+        $slug = $data['slug'] ?? str_slug($data['name']);
+        if ($this->contentSlugExists(BlogTag::class, (string) $slug, $languageId)) {
+            $this->jsonResponse(false, 'Slug already exists for this language', null, 422);
+            return;
         }
         
         $tagData = [
             'name' => $data['name'],
-            'slug' => $data['slug'] ?? str_slug($data['name']),
+            'slug' => $slug,
             'description' => $data['description'] ?? null,
-            'language_id' => $languageId
+            'language_id' => $languageId,
+            'translation_group_id' => $this->normalizeTranslationGroupId(
+                $data['translation_group_id'] ?? null,
+                null,
+                'blog-tag'
+            )
         ];
         
         $tag = BlogTag::create($tagData);
@@ -1058,11 +1244,21 @@ class ApiController extends Controller
         
         $data = Input::json() ?? $this->request->post();
         
-        if (!empty($data['language_code'])) {
-            $language = Language::findByCode($data['language_code']);
-            if ($language) {
-                $data['language_id'] = $language->id;
-            }
+        if (!$this->languageCodeExists($data)) {
+            $this->jsonResponse(false, "Language code '{$data['language_code']}' not found", null, 400);
+            return;
+        }
+
+        $data['language_id'] = $this->resolveLanguageIdFromPayload($data, $tag->language_id ? (int) $tag->language_id : null);
+        $data['translation_group_id'] = $this->normalizeTranslationGroupId(
+            $data['translation_group_id'] ?? null,
+            $tag->translation_group_id ?? null,
+            'blog-tag'
+        );
+        $slug = (string) ($data['slug'] ?? $tag->slug ?? '');
+        if ($slug !== '' && $this->contentSlugExists(BlogTag::class, $slug, $data['language_id'], (int) $tag->id)) {
+            $this->jsonResponse(false, 'Slug already exists for this language', null, 422);
+            return;
         }
         
         foreach ($data as $key => $value) {

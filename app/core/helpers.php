@@ -205,6 +205,133 @@ function app_router(): ?Router {
 }
 
 /**
+ * Check whether the site is running in multi-language URL mode.
+ */
+function site_is_multilingual(): bool
+{
+    $mode = strtolower(trim((string) Env::get('SITE_LANGUAGE_MODE', 'multi')));
+
+    if ($mode === 'single') {
+        return false;
+    }
+
+    if ($mode === 'multi') {
+        return true;
+    }
+
+    if (class_exists('Language')) {
+        try {
+            $siteLanguages = 0;
+            foreach (Language::getActive() as $language) {
+                if (!empty($language->is_site_language)) {
+                    $siteLanguages++;
+                }
+            }
+
+            return $siteLanguages > 1;
+        } catch (Throwable $e) {
+            // Fall back to multilingual when language lookup fails.
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Prefix a path with language segment in multi-language mode only.
+ */
+function localized_path(string $path = '/', ?string $lang = null): string
+{
+    $path = '/' . ltrim($path, '/');
+    if ($path !== '/' && str_ends_with($path, '/')) {
+        $path = rtrim($path, '/');
+    }
+
+    if (!site_is_multilingual()) {
+        return $path;
+    }
+
+    $lang = $lang ?: current_lang();
+
+    return '/' . trim($lang, '/') . ($path === '/' ? '' : $path);
+}
+
+/**
+ * Resolve the best equivalent URL in another language for the current request.
+ */
+function translated_content_path(?string $targetLang = null, ?string $currentUri = null, ?string $currentLang = null): string
+{
+    $targetLang = $targetLang ?: current_lang();
+    $currentLang = $currentLang ?: current_lang();
+    $currentUri = $currentUri ?: (app_router()?->getUri() ?? '/');
+
+    if (!site_is_multilingual()) {
+        return localized_path($currentUri, $targetLang);
+    }
+
+    if (!class_exists('Language')) {
+        return localized_path($currentUri, $targetLang);
+    }
+
+    $targetLanguage = Language::findByCode($targetLang);
+    if (!$targetLanguage) {
+        return localized_path('/', $targetLang);
+    }
+
+    if (class_exists('Page')) {
+        $page = Page::findByRoute($currentUri, $currentLang);
+        if ($page && !empty($page->translation_group_id)) {
+            $translatedRow = Page::query()
+                ->where('translation_group_id', $page->translation_group_id)
+                ->where('language_id', $targetLanguage->id)
+                ->where('is_active', 1)
+                ->first();
+
+            if ($translatedRow && !empty($translatedRow['route'])) {
+                return localized_path((string) $translatedRow['route'], $targetLang);
+            }
+        }
+    }
+
+    $routeParts = array_values(array_filter(explode('/', trim($currentUri, '/'))));
+    if (count($routeParts) === 2 && class_exists('BlogCategory') && class_exists('BlogPost')) {
+        $category = BlogCategory::findBySlug((string) $routeParts[0], $currentLang);
+        $post = BlogPost::findBySlug((string) $routeParts[1], $currentLang);
+
+        if ($category && $post && !empty($category->translation_group_id) && !empty($post->translation_group_id)) {
+            $translatedCategory = BlogCategory::query()
+                ->where('translation_group_id', $category->translation_group_id)
+                ->where('language_id', $targetLanguage->id)
+                ->first();
+            $translatedPost = BlogPost::query()
+                ->where('translation_group_id', $post->translation_group_id)
+                ->where('language_id', $targetLanguage->id)
+                ->first();
+
+            if ($translatedCategory && $translatedPost) {
+                return localized_path('/' . $translatedCategory['slug'] . '/' . $translatedPost['slug'], $targetLang);
+            }
+        }
+    }
+
+    if (count($routeParts) === 1 && class_exists('BlogCategory')) {
+        $category = BlogCategory::findBySlug((string) $routeParts[0], $currentLang);
+        if ($category && !empty($category->translation_group_id)) {
+            $translatedCategory = BlogCategory::query()
+                ->where('translation_group_id', $category->translation_group_id)
+                ->where('language_id', $targetLanguage->id)
+                ->first();
+
+            if ($translatedCategory && !empty($translatedCategory['slug'])) {
+                return localized_path('/' . $translatedCategory['slug'], $targetLang);
+            }
+        }
+    }
+
+    return localized_path('/', $targetLang);
+}
+
+/**
  * Generate route URL with language prefix
  *
  * @param string $name Route name
@@ -227,8 +354,7 @@ function route(string $name, array $params = [], ?string $lang = null): string {
         return '#';
     }
 
-    // Prepend language prefix
-    return '/' . $lang . $url;
+    return localized_path($url, $lang);
 }
 
 /**
@@ -302,10 +428,7 @@ function csp_nonce(): string {
  * @return FormBuilder FormBuilder instance
  */
 function form(string $path, string $method = 'POST', array $data = []): FormBuilder {
-    $lang = current_lang();
-    
-    // Add language prefix to path
-    $fullPath = '/' . $lang . $path;
+    $fullPath = localized_path($path, current_lang());
     
     $form = new FormBuilder($fullPath, $method);
     

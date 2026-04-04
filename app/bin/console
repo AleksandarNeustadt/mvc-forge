@@ -47,7 +47,7 @@ function ap_console_show_help(): int
     echo "Usage:\n";
     echo "  php app/bin/console <command> [options]\n\n";
     echo "Commands:\n";
-    echo "  install:setup [--mode=hosting|local] [--domain=<domain>] [--public-path=<path>] [--force]\n";
+    echo "  install:setup [--mode=hosting|local] [--domain=<domain>] [--site-name=<name>] [--public-path=<path>] [--force]\n";
     echo "                                Prepare public_html, .env, storage and hosting diagnostics\n";
     echo "  install:check                 Check PHP, extensions, .env, storage and DB connectivity\n";
     echo "  storage:prepare               Create storage/cache/log/upload directories\n";
@@ -79,6 +79,7 @@ function ap_console_install_setup(string $appPath, array $options): int
     $projectRoot = dirname($appPath);
     $publicPath = ap_console_resolve_public_path($projectRoot, (string) ($options['public-path'] ?? ''));
     $domain = trim((string) ($options['domain'] ?? basename($projectRoot)));
+    $siteName = trim((string) ($options['site-name'] ?? $options['brand-name'] ?? $domain));
     $force = !empty($options['force']);
 
     if (!in_array($mode, ['local', 'hosting'], true)) {
@@ -90,11 +91,12 @@ function ap_console_install_setup(string $appPath, array $options): int
     echo "[INFO] Mode: {$mode}\n";
     echo "[INFO] App path: {$appPath}\n";
     echo "[INFO] Public path: {$publicPath}\n";
-    echo "[INFO] Domain: {$domain}\n\n";
+    echo "[INFO] Domain: {$domain}\n";
+    echo "[INFO] Site name: {$siteName}\n\n";
 
     $failed = 0;
     $failed += ap_console_prepare_public_html($appPath, $publicPath, $force);
-    $failed += ap_console_prepare_env_file($appPath, $domain);
+    $failed += ap_console_prepare_env_file($appPath, $domain, $siteName);
     $failed += ap_console_storage_prepare($appPath);
     $failed += ap_console_ensure_app_key($appPath);
 
@@ -581,13 +583,22 @@ function ap_console_prepare_public_html(string $appPath, string $publicPath, boo
     return $failed;
 }
 
-function ap_console_prepare_env_file(string $appPath, string $domain): int
+function ap_console_prepare_env_file(string $appPath, string $domain, string $siteName): int
 {
     $envPath = $appPath . '/.env';
     $examplePath = $appPath . '/.env.example';
 
     if (is_file($envPath)) {
-        return ap_console_check('.env exists', true);
+        $content = (string) file_get_contents($envPath);
+        $content = ap_console_upsert_env_value($content, 'APP_URL', 'https://' . $domain);
+        $content = ap_console_upsert_env_value($content, 'CORS_ALLOWED_ORIGINS', 'https://' . $domain);
+        $content = ap_console_upsert_env_value($content, 'BRAND_NAME', $siteName);
+
+        if (file_put_contents($envPath, $content, LOCK_EX) === false) {
+            return ap_console_check("Update {$envPath}", false);
+        }
+
+        return ap_console_check("Update {$envPath}", true);
     }
 
     if (!is_file($examplePath)) {
@@ -595,15 +606,27 @@ function ap_console_prepare_env_file(string $appPath, string $domain): int
     }
 
     $content = (string) file_get_contents($examplePath);
-    $content = preg_replace('/^APP_URL=.*/m', 'APP_URL=https://' . $domain, $content);
-    $content = preg_replace('/^CORS_ALLOWED_ORIGINS=.*/m', 'CORS_ALLOWED_ORIGINS=https://' . $domain, $content);
-    $content = preg_replace('/^BRAND_NAME=.*/m', 'BRAND_NAME=' . $domain, $content);
+    $content = ap_console_upsert_env_value($content, 'APP_URL', 'https://' . $domain);
+    $content = ap_console_upsert_env_value($content, 'CORS_ALLOWED_ORIGINS', 'https://' . $domain);
+    $content = ap_console_upsert_env_value($content, 'BRAND_NAME', $siteName);
 
     if ($content === null || file_put_contents($envPath, $content, LOCK_EX) === false) {
         return ap_console_check("Create {$envPath} from .env.example", false);
     }
 
     return ap_console_check("Create {$envPath} from .env.example", true);
+}
+
+function ap_console_upsert_env_value(string $content, string $key, string $value): string
+{
+    $line = $key . '=' . $value;
+    $pattern = '/^' . preg_quote($key, '/') . '=.*/m';
+
+    if (preg_match($pattern, $content) === 1) {
+        return preg_replace($pattern, $line, $content) ?? $content;
+    }
+
+    return rtrim($content) . "\n" . $line . "\n";
 }
 
 function ap_console_ensure_app_key(string $appPath): int

@@ -131,9 +131,15 @@ class DashboardBlogPostService
         return $this->blogTaxonomyService->normalizeSlug($slug, $fallbackTitle);
     }
 
-    public function postSlugExists(string $slug, ?int $excludeId = null): bool
+    public function postSlugExists(string $slug, ?int $excludeId = null, ?int $languageId = null): bool
     {
         $query = BlogPost::query()->where('slug', $slug);
+
+        if ($languageId !== null) {
+            $query->where('language_id', $languageId);
+        } else {
+            $query->whereNull('language_id');
+        }
 
         if ($excludeId !== null) {
             $query->where('id', '!=', $excludeId);
@@ -150,7 +156,9 @@ class DashboardBlogPostService
             (string) ($input['title'] ?? '')
         );
 
-        if ($slug !== '' && $this->postSlugExists($slug, $excludeId)) {
+        $languageId = $this->normalizeLanguageId($input['language_id'] ?? null);
+
+        if ($slug !== '' && $this->postSlugExists($slug, $excludeId, $languageId)) {
             $errors['slug'] = array_merge(
                 $errors['slug'] ?? [],
                 ['A post with this slug already exists']
@@ -189,8 +197,11 @@ class DashboardBlogPostService
         $post->meta_keywords = $input['meta_keywords'] ?? '';
         $post->views = (int) ($post->views ?? 0);
 
-        $languageId = $input['language_id'] ?? null;
-        $post->language_id = (!empty($languageId) && $languageId !== '0') ? (int) $languageId : null;
+        $post->language_id = $this->normalizeLanguageId($input['language_id'] ?? null);
+        $post->translation_group_id = $this->normalizeTranslationGroupId(
+            $input['translation_group_id'] ?? null,
+            $post->translation_group_id ?? null
+        );
     }
 
     public function syncPostCategories(BlogPost $post, mixed $categoryIds): void
@@ -246,6 +257,30 @@ class DashboardBlogPostService
         }
 
         return $categories;
+    }
+
+    private function normalizeLanguageId(mixed $value): ?int
+    {
+        if ($value === null || $value === '' || $value === '0' || $value === 0) {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    private function normalizeTranslationGroupId(mixed $requestedGroupId, ?string $existingGroupId = null): string
+    {
+        $groupId = trim((string) ($requestedGroupId ?? ''));
+        if ($groupId !== '') {
+            return $groupId;
+        }
+
+        $groupId = trim((string) ($existingGroupId ?? ''));
+        if ($groupId !== '') {
+            return $groupId;
+        }
+
+        return 'blog-post-' . bin2hex(random_bytes(16));
     }
 }
 

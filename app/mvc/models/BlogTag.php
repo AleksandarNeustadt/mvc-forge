@@ -39,11 +39,13 @@ class BlogTag extends Model
         'name',
         'slug',
         'description',
-        'language_id'
+        'language_id',
+        'translation_group_id'
     ];
 
     protected array $casts = [
         'language_id' => 'int',
+        'translation_group_id' => 'string',
         'created_at' => 'int',
         'updated_at' => 'int'
     ];
@@ -51,9 +53,27 @@ class BlogTag extends Model
     /**
      * Find tag by slug
      */
-    public static function findBySlug(string $slug): ?static
+    public static function findBySlug(string $slug, ?string $langCode = null): ?static
     {
-        return static::findByField('slug', $slug);
+        $query = static::query()->where('slug', $slug);
+
+        if (class_exists(Language::class)) {
+            $langCode = $langCode ?: current_lang();
+            $language = Language::findByCode($langCode);
+            if (!$language) {
+                return null;
+            }
+
+            $query->where('language_id', $language->id);
+        }
+
+        $row = $query->first();
+        if (!$row) {
+            return null;
+        }
+
+        $instance = new static();
+        return $instance->newFromBuilder($row);
     }
 
     /**
@@ -71,21 +91,32 @@ class BlogTag extends Model
         }
         
         $ids = array_column($postIds, 'blog_post_id');
-        return BlogPost::query()
-            ->whereIn('id', $ids)
-            ->get();
+        $query = BlogPost::query()->whereIn('id', $ids);
+
+        if ($this->language_id !== null) {
+            $query->where('language_id', (int) $this->language_id);
+        } else {
+            $query->whereNull('language_id');
+        }
+
+        return $query->get();
     }
 
     /**
      * Generate unique slug
      */
-    protected static function generateUniqueSlug(string $base, ?int $excludeId = null): string
+    protected static function generateUniqueSlug(string $base, ?int $excludeId = null, ?int $languageId = null): string
     {
         $slug = str_slug($base);
         $originalSlug = $slug;
         $counter = 1;
 
         $query = static::query()->where('slug', $slug);
+        if ($languageId !== null) {
+            $query->where('language_id', $languageId);
+        } else {
+            $query->whereNull('language_id');
+        }
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
         }
@@ -94,6 +125,11 @@ class BlogTag extends Model
             $slug = $originalSlug . '-' . $counter;
             $counter++;
             $query = static::query()->where('slug', $slug);
+            if ($languageId !== null) {
+                $query->where('language_id', $languageId);
+            } else {
+                $query->whereNull('language_id');
+            }
             if ($excludeId) {
                 $query->where('id', '!=', $excludeId);
             }

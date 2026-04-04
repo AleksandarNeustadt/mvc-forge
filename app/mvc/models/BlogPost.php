@@ -48,7 +48,8 @@ class BlogPost extends Model
         'meta_title',
         'meta_description',
         'meta_keywords',
-        'language_id'
+        'language_id',
+        'translation_group_id'
     ];
 
     protected array $casts = [
@@ -56,6 +57,7 @@ class BlogPost extends Model
         'published_at' => 'int',
         'views' => 'int',
         'language_id' => 'int',
+        'translation_group_id' => 'string',
         'created_at' => 'int',
         'updated_at' => 'int'
     ];
@@ -66,11 +68,15 @@ class BlogPost extends Model
     public static function findBySlug(string $slug, ?string $langCode = null): ?static
     {
         $query = static::query()->where('slug', $slug);
-        
+
         // Filter by language
-        if (class_exists('Language')) {
+        if (class_exists(Language::class)) {
             $langCode = $langCode ?: current_lang();
             $language = Language::findByCode($langCode);
+            if (!$language) {
+                return null;
+            }
+
             if ($language) {
                 $query->where('language_id', $language->id);
             }
@@ -110,9 +116,15 @@ class BlogPost extends Model
         }
         
         $ids = array_column($categoryIds, 'blog_category_id');
-        return BlogCategory::query()
-            ->whereIn('id', $ids)
-            ->get();
+        $query = BlogCategory::query()->whereIn('id', $ids);
+
+        if ($this->language_id !== null) {
+            $query->where('language_id', (int) $this->language_id);
+        } else {
+            $query->whereNull('language_id');
+        }
+
+        return $query->get();
     }
 
     /**
@@ -130,9 +142,15 @@ class BlogPost extends Model
         }
         
         $ids = array_column($tagIds, 'blog_tag_id');
-        return BlogTag::query()
-            ->whereIn('id', $ids)
-            ->get();
+        $query = BlogTag::query()->whereIn('id', $ids);
+
+        if ($this->language_id !== null) {
+            $query->where('language_id', (int) $this->language_id);
+        } else {
+            $query->whereNull('language_id');
+        }
+
+        return $query->get();
     }
 
     /**
@@ -285,13 +303,18 @@ class BlogPost extends Model
     /**
      * Generate unique slug
      */
-    protected static function generateUniqueSlug(string $base, ?int $excludeId = null): string
+    protected static function generateUniqueSlug(string $base, ?int $excludeId = null, ?int $languageId = null): string
     {
         $slug = str_slug($base);
         $originalSlug = $slug;
         $counter = 1;
 
         $query = static::query()->where('slug', $slug);
+        if ($languageId !== null) {
+            $query->where('language_id', $languageId);
+        } else {
+            $query->whereNull('language_id');
+        }
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
         }
@@ -300,6 +323,11 @@ class BlogPost extends Model
             $slug = $originalSlug . '-' . $counter;
             $counter++;
             $query = static::query()->where('slug', $slug);
+            if ($languageId !== null) {
+                $query->where('language_id', $languageId);
+            } else {
+                $query->whereNull('language_id');
+            }
             if ($excludeId) {
                 $query->where('id', '!=', $excludeId);
             }
