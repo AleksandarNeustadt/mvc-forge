@@ -572,6 +572,10 @@ class CrudTable {
         // Add dynamic filters
         if (this.currentFilters && Object.keys(this.currentFilters).length > 0) {
             Object.keys(this.currentFilters).forEach(filterKey => {
+                if (filterKey === 'language_id' || filterKey === 'language_code') {
+                    return;
+                }
+
                 const filterValue = this.currentFilters[filterKey];
                 
                 if (typeof filterValue === 'object' && filterValue !== null) {

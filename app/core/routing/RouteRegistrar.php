@@ -219,6 +219,7 @@ class RouteRegistrar {
      */
     private function flushPendingRoute(): void {
         $this->pendingRoute = null;
+        $this->attributes = [];
     }
 
     /**
