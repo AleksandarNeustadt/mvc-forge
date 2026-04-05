@@ -88,6 +88,32 @@ class PageController extends Controller
             : $languageId === null;
     }
 
+    private function buildBlogPostViewData(BlogPost $blogPost, ?array $page = null): array
+    {
+        $postArray = $blogPost->toArray();
+
+        $categories = $blogPost->categories();
+        $tags = $blogPost->tags();
+        $author = $blogPost->author();
+
+        $postArray['categories'] = is_array($categories) ? $categories : [];
+        $postArray['tags'] = is_array($tags) ? $tags : [];
+        $postArray['author'] = $author ? $author->toArray() : null;
+        $postArray['url'] = $this->getBlogPostUrl($blogPost->id);
+
+        return [
+            'page' => $page ?? [
+                'title' => $blogPost->title,
+                'meta_title' => $blogPost->meta_title ?? $blogPost->title,
+                'meta_description' => $blogPost->meta_description ?? $blogPost->excerpt,
+                'meta_keywords' => $blogPost->meta_keywords ?? '',
+            ],
+            'pageType' => 'blog_post',
+            'application' => 'blog',
+            'blogPost' => $postArray,
+        ];
+    }
+
     /**
      * Get URL for a blog post by finding the page that links to it
      * Uses SEO-friendly format: /category-slug/post-slug
@@ -222,27 +248,8 @@ class PageController extends Controller
                             if (in_array($category->id, $postCategoryIds)) {
                                 // Found matching post in category - render it
                                 Logger::debug("PageController::show() - Post belongs to category, rendering post");
-                                $postArray = $blogPost->toArray();
-                                $categories = $blogPost->categories();
-                                $postArray['categories'] = is_array($categories) ? $categories : [];
-                                
-                                $author = $blogPost->author();
-                                $postArray['author'] = $author ? $author->toArray() : null;
-                                $postArray['url'] = $this->getBlogPostUrl($blogPost->id);
-                                
-                                $data = [
-                                    'page' => [
-                                        'title' => $blogPost->title,
-                                        'meta_title' => $blogPost->meta_title ?? $blogPost->title,
-                                        'meta_description' => $blogPost->meta_description ?? $blogPost->excerpt,
-                                        'meta_keywords' => $blogPost->meta_keywords ?? '',
-                                    ],
-                                    'pageType' => 'blog_post',
-                                    'application' => 'blog',
-                                    'blogPost' => $postArray,
-                                ];
-                                
-                                $this->view('blog/single', $data);
+
+                                $this->view('blog/single', $this->buildBlogPostViewData($blogPost));
                                 return;
                             } else {
                                 Logger::debug("PageController::show() - Post does NOT belong to category. Post category IDs: " . json_encode($postCategoryIds) . ", Looking for: {$category->id}");
@@ -416,39 +423,37 @@ class PageController extends Controller
             case 'blog_post':
                 // Single blog post
                 // Only render if this is actually a blog application and has a valid blog post
-                if ($application === 'blog' && $page->blog_post_id) {
-                    $blogPost = BlogPost::find($page->blog_post_id);
+                if ($application === 'blog') {
+                    $blogPost = null;
+
+                    if ($page->blog_post_id) {
+                        $blogPost = BlogPost::find($page->blog_post_id);
+                    }
+
+                    if (!$blogPost && !empty($page->slug)) {
+                        $blogPost = BlogPost::findBySlug((string) $page->slug, $lang);
+                    }
+
+                    if (!$blogPost) {
+                        $routeSlug = trim((string) ($page->route ?? ''), '/');
+                        if ($routeSlug !== '' && !str_contains($routeSlug, '/')) {
+                            $blogPost = BlogPost::findBySlug($routeSlug, $lang);
+                        }
+                    }
+
                     if ($blogPost && $this->belongsToCurrentLanguage($blogPost->language_id)) {
-                        $postArray = $blogPost->toArray();
-                        // categories() and tags() return arrays (from QueryBuilder::get()), not model instances
-                        $categories = $blogPost->categories();
-                        $tags = $blogPost->tags();
-                        $postArray['categories'] = is_array($categories) ? $categories : [];
-                        $postArray['tags'] = is_array($tags) ? $tags : [];
-                        
-                        // Get author (returns Model instance, so use toArray())
-                        $author = $blogPost->author();
-                        $postArray['author'] = $author ? $author->toArray() : null;
-                        
-                        // Add URL
-                        $postArray['url'] = $this->getBlogPostUrl($blogPost->id);
-                        
-                        $data['blogPost'] = $postArray;
-                        $this->view('blog/single', $data);
-                        return;
-                    } else {
-                        // Blog post not found - show 404
-                        Logger::debug("PageController::show() - Blog post not found for page ID: {$page->id}, blog_post_id: {$page->blog_post_id}");
-                        $this->abort(404, 'Blog post not found');
+                        $this->view('blog/single', $this->buildBlogPostViewData($blogPost, $data['page']));
                         return;
                     }
-                } else {
-                    // Page type is blog_post but not a blog application or missing blog_post_id
-                    // Fall through to custom/default handling
-                    Logger::debug("PageController::show() - Page has page_type='blog_post' but application='{$application}' or missing blog_post_id. Treating as custom page.");
-                    // Continue to default case
+
+                    Logger::debug("PageController::show() - Blog post not found for page ID: {$page->id}, blog_post_id: {$page->blog_post_id}");
+                    $this->abort(404, 'Blog post not found');
+                    return;
                 }
-                // Fall through to default case if conditions not met
+
+                Logger::debug("PageController::show() - Page has page_type='blog_post' but application='{$application}'. Treating as custom page.");
+                $this->view('custom/default', $data);
+                break;
 
             case 'blog_category':
                 // Blog category listing

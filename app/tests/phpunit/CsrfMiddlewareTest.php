@@ -10,6 +10,11 @@ final class CsrfMiddlewareTest extends TestCase
 {
     public function testPostRequestWithoutTokenIsRejected(): void
     {
+        $bootstrapPath = realpath(__DIR__ . '/../bootstrap.php');
+        if ($bootstrapPath === false) {
+            throw new RuntimeException('Unable to resolve PHPUnit bootstrap file.');
+        }
+
         $scriptPath = tempnam(sys_get_temp_dir(), 'ap_csrf_test_');
         if ($scriptPath === false) {
             throw new RuntimeException('Unable to create temporary CSRF script.');
@@ -17,7 +22,7 @@ final class CsrfMiddlewareTest extends TestCase
 
         $script = <<<'PHP'
 <?php
-require '/path/to/project/app/tests/bootstrap.php';
+require '__BOOTSTRAP_PATH__';
 
 $_SERVER['REQUEST_METHOD'] = 'POST';
 $_SERVER['REQUEST_URI'] = '/sr/profile';
@@ -38,6 +43,8 @@ register_shutdown_function(static function (): void {
 
 $middleware->handle($request, static fn() => 'next');
 PHP;
+
+        $script = str_replace('__BOOTSTRAP_PATH__', $bootstrapPath, $script);
 
         file_put_contents($scriptPath, $script);
 

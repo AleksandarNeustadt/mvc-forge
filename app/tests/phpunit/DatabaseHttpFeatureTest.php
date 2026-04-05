@@ -312,6 +312,11 @@ final class DatabaseHttpFeatureTest extends TestCase
         array $sessionData = [],
         string $accept = 'text/html'
     ): array {
+        $indexPath = realpath(__DIR__ . '/../../../public_html/index.php');
+        if ($indexPath === false) {
+            throw new RuntimeException('Unable to resolve public entry point.');
+        }
+
         $scriptPath = tempnam(sys_get_temp_dir(), 'ap_db_http_');
         if ($scriptPath === false) {
             throw new RuntimeException('Unable to create temporary DB HTTP script.');
@@ -322,6 +327,7 @@ final class DatabaseHttpFeatureTest extends TestCase
         $methodExport = var_export($method, true);
         $uriExport = var_export($uri, true);
         $acceptExport = var_export($accept, true);
+        $indexPathExport = var_export($indexPath, true);
         $sessionIdExport = var_export('ap-phpunit-' . bin2hex(random_bytes(16)), true);
         $remoteAddress = '127.0.' . random_int(0, 255) . '.' . random_int(1, 254);
         $remoteAddressExport = var_export($remoteAddress, true);
@@ -356,7 +362,7 @@ register_shutdown_function(static function (): void {
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 });
 
-require '/path/to/project/public_html/index.php';
+require {$indexPathExport};
 PHP;
 
         file_put_contents($scriptPath, $script);

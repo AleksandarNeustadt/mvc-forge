@@ -21,4 +21,3 @@ MONGODB_DATABASE=aleksandar_pro
 EOF
 
 echo "✅ .env file created successfully!"
-

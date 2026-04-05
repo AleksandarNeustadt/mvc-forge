@@ -17,4 +17,3 @@ MONGODB_URI=mongodb+srv://your_username:your_password@your-cluster.mongodb.net/a
 MONGODB_DATABASE=aleksandar_pro
 ENVEOF
 echo "✅ .env file created!"
-

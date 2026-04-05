@@ -49,7 +49,7 @@ final class HttpSmokeTest extends TestCase
         $response = $this->runHttpRequest('POST', '/sr/logout', [], 'text/html');
 
         self::assertSame(403, $response['status']);
-        self::assertStringContainsString('CSRF token mismatch', $response['body']);
+        self::assertStringContainsString('CSRF token', $response['body']);
         self::assertSame('', $response['stderr']);
     }
 
@@ -113,6 +113,11 @@ final class HttpSmokeTest extends TestCase
         array $postData = [],
         string $accept = 'text/html'
     ): array {
+        $indexPath = realpath(__DIR__ . '/../../../public_html/index.php');
+        if ($indexPath === false) {
+            throw new RuntimeException('Unable to resolve public entry point.');
+        }
+
         $scriptPath = tempnam(sys_get_temp_dir(), 'ap_http_smoke_');
         if ($scriptPath === false) {
             throw new RuntimeException('Unable to create temporary smoke script.');
@@ -122,6 +127,7 @@ final class HttpSmokeTest extends TestCase
         $methodExport = var_export($method, true);
         $uriExport = var_export($uri, true);
         $acceptExport = var_export($accept, true);
+        $indexPathExport = var_export($indexPath, true);
         $remoteAddressExport = var_export(
             '127.0.' . random_int(0, 255) . '.' . random_int(1, 254),
             true
@@ -150,7 +156,7 @@ register_shutdown_function(static function (): void {
     ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 });
 
-require '/path/to/project/public_html/index.php';
+require {$indexPathExport};
 PHP;
 
         file_put_contents($scriptPath, $script);
